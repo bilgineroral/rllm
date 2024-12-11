@@ -57,7 +57,7 @@ class ProteinRNADataset(Dataset):
         rna_emb = rna_emb[:, :-1, :]  # Shape: [12, seq_len + 1, d_rna]
 
         # Tokenize RNA sequence and create target
-        rna_tokens = self.tokenizer(pair["rna_seq"])  # List of token indices with <SOS> and <EOS>
+        rna_tokens = self.tokenizer(pair["rna_seq"])  # List of token indices with <START> and <END>
         rna_input = torch.tensor(rna_tokens[:-1], dtype=torch.long)  # Input
         rna_target = torch.tensor(rna_tokens[1:], dtype=torch.long) # Target (shifted)
 

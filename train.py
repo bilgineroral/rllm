@@ -17,12 +17,12 @@ from util import checkpoint, validate, load_config, get_optimizer, get_scheduler
 config_path = "./config/config.yaml"
 config = load_config(config_path)
 
-protein_data_path = "./dataset/protein"
+""" protein_data_path = "./dataset/protein"
 rna_data_path = "./dataset/rna"
 
 pairs_train_path = "./dataset/train.txt"
 pairs_val_path = "./dataset/val.txt"
-pairs_test_path = "./dataset/test.txt"
+pairs_test_path = "./dataset/test.txt" """
 
 log_path = "./train.log"
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -42,15 +42,15 @@ vocab_size = tokenizer.vocab_size
 
 # DataLoader for Train and Validation
 train_dataset = ProteinRNADataset(
-    pairs_file=pairs_train_path,
-    protein_folder=protein_data_path, 
-    rna_folder=rna_data_path,
+    pairs_file=config["data_paths"]["pairs_train_path"],
+    protein_folder=config["data_paths"]["protein_data_path"], 
+    rna_folder=config["data_paths"]["rna_data_path"],
     tokenizer=tokenizer
 )
 val_dataset = ProteinRNADataset(
-    pairs_file=pairs_val_path,
-    protein_folder=protein_data_path, 
-    rna_folder=rna_data_path,
+    pairs_file=config["data_paths"]["pairs_val_path"],
+    protein_folder=config["data_paths"]["protein_data_path"], 
+    rna_folder=config["data_paths"]["rna_data_path"],
     tokenizer=tokenizer
 )
 
