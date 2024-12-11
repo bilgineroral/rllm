@@ -6,7 +6,6 @@ import time
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from model import ParallelizedCrossAttentionModel
@@ -87,9 +86,12 @@ num_epochs = config["num_epochs"]
 start = time.time()
 iteration = 0
 
+early_stopping_patience = config["patience"]
+epochs_without_improvement = 0
+best_val_loss = float('inf')
+
 for epoch in range(num_epochs):
     model.train()
-    running_train_loss = 0.0
     total_train_loss = 0.0
 
     # Progress bar for current epoch
@@ -122,7 +124,6 @@ for epoch in range(num_epochs):
             optimizer.step()
             
             iteration += 1
-            running_train_loss += loss.item()
             total_train_loss += loss.item()
 
             # Update progress bar with current loss
@@ -135,6 +136,18 @@ for epoch in range(num_epochs):
     epoch_val_losses.append(avg_val_loss)
 
     scheduler.step(avg_val_loss)
+
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        epochs_without_improvement = 0
+        
+        logging.info(f"Best model with validation loss: {avg_val_loss:.4f}, at epoch {epoch + 1}")
+    else:
+        epochs_without_improvement += 1
+
+    if epochs_without_improvement >= early_stopping_patience:
+        print("Early stopping triggered.")
+        break
 
     logging.info(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
     logging.info(f"Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6f}\n")

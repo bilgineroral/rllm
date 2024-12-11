@@ -1,12 +1,13 @@
 # Training Configuration
-batch_size: 2
+batch_size: 32
 num_layers: 12
 d_rna: 768
 d_protein: 1536
 d_model: 768
 num_heads: 8
-num_epochs: 10
+num_epochs: 100
 learning_rate: 1.0e-4
+patience: 12    # Early stopping patience
 
 # Optimizer Configuration
 optimizer:
