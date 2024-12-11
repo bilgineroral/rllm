@@ -5,7 +5,8 @@ import einops
 class CrossAttentionBlock(nn.Module):
     def __init__(self, d_protein: int = 1536, 
                  d_rna: int = 768, 
-                 d_model: int = 768, num_heads: int = 8
+                 d_model: int = 768, num_heads: int = 8,
+                 dropout: float = 0.1
                 ):
         """
         d_protein: Dimension of protein embeddings
@@ -17,8 +18,9 @@ class CrossAttentionBlock(nn.Module):
         super().__init__()
         self.protein_proj = nn.Linear(d_protein, d_model)
         self.rna_proj = nn.Linear(d_rna, d_model)
-        self.cross_attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True)
+        self.cross_attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True, dropout=dropout)
         self.layer_norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, protein_emb: torch.Tensor, 
                 rna_emb: torch.Tensor, 
@@ -31,8 +33,8 @@ class CrossAttentionBlock(nn.Module):
         rna_mask: [B, rna_len]
         """
         # Project protein and RNA embeddings to a common dimension
-        protein_proj = self.protein_proj(protein_emb)  # [B, prot_len, d_model]
-        rna_proj = self.rna_proj(rna_emb)              # [B, rna_len, d_model]
+        protein_proj = self.dropout(self.protein_proj(protein_emb))  # [B, prot_len, d_model]
+        rna_proj = self.dropout(self.rna_proj(rna_emb))              # [B, rna_len, d_model]
 
         # Cross Attention: RNA queries protein
         attn_output, _ = self.cross_attention(
@@ -56,14 +58,17 @@ class ParallelizedCrossAttentionModel(nn.Module):
                  d_model: int = 768,
                  num_heads: int = 8,
                  num_layers: int = 12,
+                 dropout: float = 0.1,
                  vocab_size: int = 8):
         super().__init__()
         self.num_layers = num_layers
         self.cross_attention_blocks = nn.ModuleList([
-            CrossAttentionBlock(d_protein, d_rna, d_model, num_heads) for _ in range(num_layers)
+            CrossAttentionBlock(d_protein, d_rna, d_model, num_heads, dropout=dropout) for _ in range(num_layers)
         ])
-        self.output_head = nn.Linear(d_model * num_layers, vocab_size)  # Final projection to vocabulary size
+        self.output_head = MLPOutputHead(d_model=d_model, num_layers=num_layers, vocab_size=vocab_size)
+        self.dropout = nn.Dropout(dropout)
 
+        
     def forward(self, rna_emb: torch.Tensor, 
                 protein_emb: torch.Tensor, 
                 rna_mask: torch.Tensor = None,
@@ -92,6 +97,38 @@ class ParallelizedCrossAttentionModel(nn.Module):
         # Stack outputs along the layer dimension
         concatenated_output = torch.stack(outputs, dim=1)  # Shape: [batch_size, num_layers, rna_seq_len, d_model]
         concatenated_output = einops.rearrange(concatenated_output, 'b l r d -> b r (l d)')
+        concatenated_output = self.dropout(concatenated_output) 
 
         logits = self.output_head(concatenated_output)  # Shape: [B, rna_seq_len, vocab_size]
         return logits
+    
+
+class MLPOutputHead(nn.Module):
+    def __init__(self, d_model, num_layers, vocab_size, dropout=0.1):
+        super(MLPOutputHead, self).__init__()
+        
+        input_dim = d_model * num_layers  # 1536 * 12 = 18432
+        hidden_dim1 = input_dim // 2
+        hidden_dim2 = input_dim // 4 
+        self.output_head = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim1),   # Layer 1: 18432 -> 4096
+            nn.LayerNorm(hidden_dim1),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),            # Optional: Dropout for regularization
+
+            nn.Linear(hidden_dim1, hidden_dim2),        # Layer 2: 4096 -> 1024
+            nn.LayerNorm(hidden_dim2),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+
+            nn.Linear(hidden_dim2, d_model),         # Layer 3: 1024 -> 256
+            nn.LayerNorm(d_model),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+
+            nn.Linear(d_model, vocab_size)    # Output Layer: 256 -> 8
+        )
+        
+    def forward(self, x):
+        # x should have shape [batch_size, seq_len, d_model * num_layers]
+        return self.output_head(x)

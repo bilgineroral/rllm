@@ -1,0 +1,40 @@
+# Training Configuration
+batch_size: 2
+num_layers: 12
+d_rna: 768
+d_protein: 1536
+d_model: 768
+num_heads: 8
+num_epochs: 10
+learning_rate: 1.0e-4
+
+# Optimizer Configuration
+optimizer:
+  type: "AdamW"   # Options: Adam, AdamW, SGD
+  weight_decay: 1.0e-4
+
+# Scheduler Configuration
+scheduler:
+  type: "ReduceLROnPlateau"  # Options: StepLR, CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR
+  params:
+    mode: "min"             # Monitor 'min' value of validation loss
+    factor: 0.5             # Reduce LR by this factor
+    patience: 3             # Number of validations with no improvement
+    min_lr: 1.0e-6            # Minimum learning rate
+
+# Data Paths
+data_paths:
+  protein_data_path: "./dataset/protein"
+  rna_data_path: "./dataset/rna"
+  pairs_train_path: "./dataset/train.txt"
+  pairs_val_path: "./dataset/val.txt"
+  pairs_test_path: "./dataset/test.txt"
+
+# Logging
+log_path: "./train.log"
+
+# Directories
+directories:
+  checkpoint_dir: "./checkpoints"
+  plots_dir: "./plots"
+  epochs_plots_dir: "./plots/epochs"

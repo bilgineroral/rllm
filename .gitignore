@@ -1,4 +1,7 @@
 __pycache__
 dataset/
+checkpoints/
+train.log
+plots
 code
 collect_code.sh

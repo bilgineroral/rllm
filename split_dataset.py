@@ -20,7 +20,7 @@ def read_entries(file_path):
     
     return entries
 
-def split_data(entries, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1, seed=42):
+def split_data(entries, train_ratio=0.85, val_ratio=0.05, test_ratio=0.1, seed=42):
     """
     Splits the entries into training, validation, and test sets.
     """
@@ -65,7 +65,7 @@ def main():
     print(f"Total entries: {len(entries)}")
     
     print("Splitting data into train, validation, and test sets...")
-    train_set, val_set, test_set = split_data(entries, train_ratio=0.8, val_ratio=0.1, test_ratio=0.1, seed=42)
+    train_set, val_set, test_set = split_data(entries, seed=42)
     print(f"Training set size: {len(train_set)}")
     print(f"Validation set size: {len(val_set)}")
     print(f"Test set size: {len(test_set)}")

@@ -1,13 +1,17 @@
 import os
+import yaml
+import logging
 import matplotlib.pyplot as plt
 
 import torch
+import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR, CosineAnnealingLR, OneCycleLR
 
 from model import ParallelizedCrossAttentionModel
 
-def plot_epoch_losses(epoch_train_losses: list, 
-                epoch_val_losses: list, 
-                epoch: int, 
+def plot_loss(train_losses: list, 
+                val_losses: list, 
+                iteration: int, 
                 plots_dir: str):
     """
     Plots the training and validation losses over epochs.
@@ -18,14 +22,14 @@ def plot_epoch_losses(epoch_train_losses: list,
         plots_dir (str): Directory to save the plot.
     """
     plt.figure(figsize=(10, 5))
-    plt.plot(epoch_train_losses, label='Training Loss')
-    plt.plot(epoch_val_losses, label='Validation Loss')
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.title('Training and Validation Losses')
     plt.legend()
     plt.grid(True)
-    plt.savefig(f"{plots_dir}/epoch_{epoch}_loss_plot.png")
+    plt.savefig(f"{plots_dir}/epoch_{iteration}_loss_plot.png")
     plt.close()
 
 
@@ -125,3 +129,59 @@ def validate(model: ParallelizedCrossAttentionModel,
             num_batches += 1
 
     return total_loss / num_batches if num_batches > 0 else float('inf')
+
+
+def load_config(config_path: str):
+    """
+    Load YAML configuration file and set up logging.
+
+    Args:
+        config_path (str): Path to the config.yaml file.
+    
+    Returns:
+        dict: Configuration dictionary with all settings.
+    """
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    # Logging setup
+    log_path = config.get("log_path", "./train.log")
+    logging.basicConfig(
+        filename=log_path, 
+        level=logging.INFO, 
+        format='%(asctime)s - %(message)s'
+    )
+    logging.info("Configuration file loaded successfully.")
+    return config
+
+def get_optimizer(model, optimizer_config, lr):
+    """Initialize optimizer based on configuration."""
+    opt_type = optimizer_config["type"]
+    weight_decay = optimizer_config.get("weight_decay", 0.0)
+
+    if opt_type == "AdamW":
+        return optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    elif opt_type == "Adam":
+        return optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    elif opt_type == "SGD":
+        return optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay)
+    else:
+        raise ValueError(f"Unsupported optimizer type: {opt_type}")
+
+def get_scheduler(optimizer, scheduler_config):
+    """Initialize scheduler based on configuration."""
+    sched_type = scheduler_config["type"]
+    params = scheduler_config.get("params", {})
+
+    assert sched_type == "ReduceLROnPlateau", "Only ReduceLROnPlateau is supported for now."
+
+    if sched_type == "ReduceLROnPlateau":
+        return ReduceLROnPlateau(optimizer, **params)
+    elif sched_type == "StepLR":
+        return StepLR(optimizer, step_size=params.get("step_size", 10), gamma=params.get("gamma", 0.1))
+    elif sched_type == "CosineAnnealingLR":
+        return CosineAnnealingLR(optimizer, T_max=params.get("T_max", 10), eta_min=params.get("eta_min", 1e-6))
+    elif sched_type == "OneCycleLR":
+        return OneCycleLR(optimizer, max_lr=params.get("max_lr", 1e-3), total_steps=params.get("total_steps", 1000))
+    else:
+        raise ValueError(f"Unsupported scheduler type: {sched_type}")

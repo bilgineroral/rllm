@@ -12,18 +12,11 @@ from torch.utils.data import DataLoader
 from model import ParallelizedCrossAttentionModel
 from dataset import ProteinRNADataset, collate_fn
 from tokenizer import RNATokenizer
-from util import checkpoint, validate, plot_epoch_losses
+from util import checkpoint, validate, load_config, get_optimizer, get_scheduler
 
-# Hyperparameters
-batch_size = 2
-num_layers = 12
-d_rna = 768
-d_protein = 1536
-d_model = 768
-num_heads = 8
-num_epochs = 10
-learning_rate = 1e-4
-checkpoint_interval = 500
+
+config_path = "./config/config.yaml"
+config = load_config(config_path)
 
 protein_data_path = "./dataset/protein"
 rna_data_path = "./dataset/rna"
@@ -64,22 +57,24 @@ val_dataset = ProteinRNADataset(
 
 train_dataloader = DataLoader(
     train_dataset, 
-    batch_size=batch_size, 
+    batch_size=config["batch_size"], 
     collate_fn=partial(collate_fn, tokenizer=tokenizer)
 )
 val_dataloader = DataLoader(
     val_dataset, 
-    batch_size=batch_size, 
+    batch_size=config["batch_size"], 
     collate_fn=partial(collate_fn, tokenizer=tokenizer)
 )
 
 
 # Model, Loss, Optimizer
 model = ParallelizedCrossAttentionModel(
-    d_rna=d_rna, d_protein=d_protein, d_model=d_model,
-    num_heads=num_heads, num_layers=num_layers, vocab_size=vocab_size
+    d_rna=config["d_rna"], d_protein=config["d_protein"], d_model=config["d_model"],
+    num_heads=config["num_heads"], num_layers=config["num_layers"], vocab_size=vocab_size
 ).to(device)
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+optimizer = get_optimizer(model, config["optimizer"], config["learning_rate"])
+scheduler = get_scheduler(optimizer, config["scheduler"])
 criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token) 
 
 
@@ -87,8 +82,11 @@ train_losses, val_losses = [], []
 epoch_train_losses, epoch_val_losses = [], []
 
 # Training Loop
+num_epochs = config["num_epochs"]
+
 start = time.time()
 iteration = 0
+
 for epoch in range(num_epochs):
     model.train()
     running_train_loss = 0.0
@@ -127,18 +125,6 @@ for epoch in range(num_epochs):
             running_train_loss += loss.item()
             total_train_loss += loss.item()
 
-            # Save intermediate checkpoint and validation loss
-            if iteration % checkpoint_interval == 0:
-                avg_train_loss = running_train_loss / checkpoint_interval
-                running_train_loss = 0.0  # Reset running loss
-
-                val_loss = validate(model, val_dataloader, criterion, vocab_size, device, subset_size=50)
-                train_losses.append(avg_train_loss)
-                val_losses.append(val_loss)
-
-                logging.info(f"\nIteration {iteration}, Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}")
-                checkpoint(model, optimizer, epoch, iteration, train_losses, val_losses, checkpoint_dir, plots_dir)
-
             # Update progress bar with current loss
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
@@ -148,11 +134,13 @@ for epoch in range(num_epochs):
     epoch_train_losses.append(avg_train_loss)
     epoch_val_losses.append(avg_val_loss)
 
+    scheduler.step(avg_val_loss)
+
     logging.info(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+    logging.info(f"Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6f}\n")
 
     # Save final checkpoint and plot after epoch
     checkpoint(model, optimizer, epoch, iteration, avg_train_loss, train_losses, val_losses, checkpoint_dir, plots_dir)
-    plot_epoch_losses(train_losses, val_losses, epoch, epochs_plots_dir)
 
 print("Training complete!")
 print(f"Trained {num_epochs} epochs in {time.time() - start:.2f} seconds.")
