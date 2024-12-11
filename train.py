@@ -21,7 +21,10 @@ learning_rate = 1e-4
 
 protein_data_path = "/home/bil/dataset/embeddings/protein"
 rna_data_path = "/home/bil/dataset/embeddings/rna"
-pairs_data_path = "/home/bil/dataset/embeddings/pairs.txt"
+
+pairs_train_path = "/home/bil/dataset/embeddings/pairs_train.txt"
+pairs_val_path = "/home/bil/dataset/embeddings/pairs_val.txt"
+pairs_test_path = "/home/bil/dataset/embeddings/pairs_test.txt"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -29,7 +32,7 @@ tokenizer = RNATokenizer()
 
 # DataLoader
 dataset = ProteinRNADataset(
-    pairs_file=pairs_data_path,
+    pairs_file=pairs_train_path,
     protein_folder=protein_data_path, 
     rna_folder=rna_data_path,
     tokenizer=tokenizer
