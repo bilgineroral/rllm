@@ -1,85 +1,82 @@
-import os
 import random
+from collections import defaultdict
 
-def read_entries(file_path):
-    """
-    Reads the input file and returns a list of entries.
-    Each entry is a tuple: (header, sequence)
-    """
-    entries = []
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-    
-    if len(lines) % 2 != 0:
-        raise ValueError("The input file has an odd number of lines. Each entry should consist of a header and a sequence.")
-    
-    for i in range(0, len(lines), 2):
-        header = lines[i].strip()
-        sequence = lines[i+1].strip()
-        entries.append((header, sequence))
-    
-    return entries
+# Input and output file paths
+INPUT_FILE = "dataset/pairs.txt"
+TRAIN_FILE = "dataset/train.txt"
+VAL_FILE = "dataset/val.txt"
+TEST_FILE = "dataset/test.txt"
 
-def split_data(entries, train_ratio=0.85, val_ratio=0.05, test_ratio=0.1, seed=42):
-    """
-    Splits the entries into training, validation, and test sets.
-    """
-    if not abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6:
-        raise ValueError("Train, validation, and test ratios must sum to 1.")
-    
-    random.seed(seed)
-    random.shuffle(entries)
-    
-    total = len(entries)
-    train_end = int(total * train_ratio)
-    val_end = train_end + int(total * val_ratio)
-    
-    train_set = entries[:train_end]
-    val_set = entries[train_end:val_end]
-    test_set = entries[val_end:]
-    
-    return train_set, val_set, test_set
+# Proportions for the splits
+TRAIN_RATIO = 0.85
+VAL_RATIO = 0.05
+TEST_RATIO = 0.10
 
-def write_entries(entries, file_path):
-    """
-    Writes the list of entries to the specified file.
-    Each entry is written as two lines: header and sequence.
-    """
-    with open(file_path, 'w') as file:
-        for header, sequence in entries:
-            file.write(f"{header}\n{sequence}\n")
+# Step 1: Read and group data by protein chain
+def read_and_group_data(input_file):
+    groups = defaultdict(list)
+    with open(input_file, 'r') as f:
+        lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith('>'):
+                header = lines[i].strip()
+                sequence = lines[i + 1].strip()
+                # Extract PDB_ID and protein chain (first two fields)
+                group_key = header.split('_')[0] + '_' + header.split('_')[1]
+                groups[group_key].append((header, sequence))
+                i += 2
+            else:
+                i += 1
+    return groups
 
+# Step 2: Split data into train, val, and test
+def split_data(groups):
+    all_keys = list(groups.keys())
+    random.shuffle(all_keys)  # Shuffle keys to randomize the data
+
+    # Calculate sizes for each split
+    total = len(all_keys)
+    train_size = int(total * TRAIN_RATIO)
+    val_size = int(total * VAL_RATIO)
+
+    # Create splits
+    train_keys = all_keys[:train_size]
+    val_keys = all_keys[train_size:train_size + val_size]
+    test_keys = all_keys[train_size + val_size:]
+
+    return train_keys, val_keys, test_keys
+
+# Step 3: Write the data to files
+def write_splits(groups, train_keys, val_keys, test_keys):
+    def write_to_file(file, keys):
+        with open(file, 'w') as f:
+            for key in keys:
+                for header, sequence in groups[key]:
+                    f.write(f"{header}\n{sequence}\n")
+
+    write_to_file(TRAIN_FILE, train_keys)
+    write_to_file(VAL_FILE, val_keys)
+    write_to_file(TEST_FILE, test_keys)
+
+# Main function to orchestrate the process
 def main():
-    input_file = './dataset/pairs.txt'
-    train_file = './dataset/train.txt'
-    val_file = './dataset/val.txt'
-    test_file = './dataset/test.txt'
-    
-    # Check if input file exists
-    if not os.path.exists(input_file):
-        print(f"Input file '{input_file}' does not exist.")
-        return
-    
-    print("Reading entries from the input file...")
-    entries = read_entries(input_file)
-    print(f"Total entries: {len(entries)}")
-    
-    print("Splitting data into train, validation, and test sets...")
-    train_set, val_set, test_set = split_data(entries, seed=42)
-    print(f"Training set size: {len(train_set)}")
-    print(f"Validation set size: {len(val_set)}")
-    print(f"Test set size: {len(test_set)}")
-    
-    print("Writing training set to train.txt...")
-    write_entries(train_set, train_file)
-    
-    print("Writing validation set to val.txt...")
-    write_entries(val_set, val_file)
-    
-    print("Writing test set to test.txt...")
-    write_entries(test_set, test_file)
-    
-    print("Data splitting completed successfully.")
+    print("Reading and grouping data...")
+    groups = read_and_group_data(INPUT_FILE)
+    print(f"Total unique protein chains: {len(groups)}")
+
+    print("Splitting data into train, val, and test...")
+    train_keys, val_keys, test_keys = split_data(groups)
+
+    print(f"Train size: {len(train_keys)} chains")
+    print(f"Validation size: {len(val_keys)} chains")
+    print(f"Test size: {len(test_keys)} chains")
+
+    print("Writing splits to files...")
+    write_splits(groups, train_keys, val_keys, test_keys)
+    print("Done! Files created:")
+    print(f"- {TRAIN_FILE}\n- {VAL_FILE}\n- {TEST_FILE}")
 
 if __name__ == "__main__":
     main()
+

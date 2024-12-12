@@ -19,16 +19,17 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_onl
 config_path = "./config/config.yaml"
 config = load_config(config_path)
 
-log_path = "./train.log"
+log_path = config["log_path"]
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
 
-checkpoint_dir = "./checkpoints"
-plots_dir = "./plots"
-epochs_plots_dir = os.path.join(plots_dir, "epochs")
+checkpoint_dir = config["directories"]["checkpoint_dir"]
+plots_dir = config["directories"]["plots_dir"]
+epochs_plots_dir = config["directories"]["epochs_plots_dir"]
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 os.makedirs(checkpoint_dir, exist_ok=True)
 os.makedirs(plots_dir, exist_ok=True)
+os.makedirs(epochs_plots_dir, exist_ok=True)
 
 
 # Initialize tokenizer
@@ -129,10 +130,13 @@ for epoch in range(num_epochs):
 
             if iteration % plot_interval == 0:
                 training_losses.append(running_loss / plot_interval)
-                validation_losses.append(validate(model, val_dataloader, criterion, vocab_size, device, subset_size=10))
+                running_loss = 0.0
+
+                avg_val_loss = validate(model, val_dataloader, criterion, vocab_size, device, subset_size=10)
+                validation_losses.append(avg_val_loss)
+                scheduler.step(avg_val_loss)
 
                 plot_loss(training_losses, validation_losses, os.path.join(plots_dir, f"epoch_{epoch}_iter_{iteration}_intermediate.png"))
-                running_loss = 0.0
 
             if iteration % checkpoint_interval == 0:
                 logging.info(f"Checkpointing: Epoch {epoch}, Iteration {iteration}, Loss: {loss.item():.4f}")
@@ -140,7 +144,7 @@ for epoch in range(num_epochs):
                     model, optimizer, scheduler, epoch, iteration, 
                     checkpoint_dir, plot=False
                 )
-
+                
             # Update progress bar with current loss
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
@@ -149,8 +153,6 @@ for epoch in range(num_epochs):
     avg_val_loss = validate(model, val_dataloader, criterion, vocab_size, device)
     epoch_train_losses.append(avg_train_loss)
     epoch_val_losses.append(avg_val_loss)
-
-    scheduler.step(avg_val_loss)
 
     checkpoint(
         model, optimizer, scheduler, epoch, iteration, 

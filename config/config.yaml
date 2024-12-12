@@ -6,10 +6,10 @@ d_protein: 1536
 d_model: 768
 num_heads: 8
 num_epochs: 10
-learning_rate: 1.0e-4
-patience: 5    # Early stopping patience
-checkpoint_interval: 25  # Save model every n iterations
-plot_interval: 10        # Plot every n iterations
+learning_rate: 3.0e-4
+patience: 4    # Early stopping patience (in epochs)
+checkpoint_interval: 100  # Save model every n iterations
+plot_interval: 50        # Plot every n iterations
 
 # Optimizer Configuration
 optimizer:
@@ -29,8 +29,8 @@ scheduler:
 data_paths:
   protein_data_path: "./dataset/protein"
   rna_data_path: "./dataset/rna"
-  pairs_train_path: "./dataset/train_small.txt"
-  pairs_val_path: "./dataset/val_small.txt"
+  pairs_train_path: "./dataset/train.txt"
+  pairs_val_path: "./dataset/val.txt"
   pairs_test_path: "./dataset/test.txt"
 
 # Logging
