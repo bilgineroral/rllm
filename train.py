@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from model import ParallelizedCrossAttentionModel
 from dataset import ProteinRNADataset, collate_fn
 from tokenizer import RNATokenizer
-from util import checkpoint, validate, load_config, get_optimizer, get_scheduler
+from util import checkpoint, validate, load_config, get_optimizer, get_scheduler, plot_loss
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only=False.*")
 
@@ -75,7 +75,8 @@ scheduler = get_scheduler(optimizer, config["scheduler"])
 criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token) 
 
 # Training Loop
-train_losses, val_losses = [], []
+epoch_train_losses, epoch_val_losses = [], []
+training_losses, validation_losses = [], []
 
 num_epochs = config["num_epochs"]
 
@@ -84,6 +85,8 @@ iteration = 0
 
 early_stopping_patience = config["patience"]
 epochs_without_improvement = 0
+checkpoint_interval = config["checkpoint_interval"]
+plot_interval = config["plot_interval"]
 best_val_loss = float('inf')
 
 for epoch in range(num_epochs):
@@ -92,6 +95,7 @@ for epoch in range(num_epochs):
 
     # Progress bar for current epoch
     with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
+        running_loss = 0.0
         for batch_idx, sample in enumerate(pbar):
             protein_batch, rna_batch, protein_mask, rna_mask, target_batch = (
                 sample["protein"].to(device), 
@@ -121,6 +125,21 @@ for epoch in range(num_epochs):
             
             iteration += 1
             total_train_loss += loss.item()
+            running_loss += loss.item()
+
+            if iteration % plot_interval == 0:
+                training_losses.append(running_loss / plot_interval)
+                validation_losses.append(validate(model, val_dataloader, criterion, vocab_size, device, subset_size=10))
+
+                plot_loss(training_losses, validation_losses, os.path.join(plots_dir, f"epoch_{epoch}_iter_{iteration}_intermediate.png"))
+                running_loss = 0.0
+
+            if iteration % checkpoint_interval == 0:
+                logging.info(f"Checkpointing: Epoch {epoch}, Iteration {iteration}, Loss: {loss.item():.4f}")
+                checkpoint(
+                    model, optimizer, scheduler, epoch, iteration, 
+                    checkpoint_dir, plot=False
+                )
 
             # Update progress bar with current loss
             pbar.set_postfix(loss=f"{loss.item():.4f}")
@@ -128,21 +147,22 @@ for epoch in range(num_epochs):
     # Average Training Loss
     avg_train_loss = total_train_loss / len(train_dataloader)
     avg_val_loss = validate(model, val_dataloader, criterion, vocab_size, device)
-    train_losses.append(avg_train_loss)
-    val_losses.append(avg_val_loss)
+    epoch_train_losses.append(avg_train_loss)
+    epoch_val_losses.append(avg_val_loss)
 
     scheduler.step(avg_val_loss)
 
     checkpoint(
         model, optimizer, scheduler, epoch, iteration, 
-        train_losses, val_losses, checkpoint_dir, plots_dir
+        checkpoint_dir, epochs_plots_dir, epoch_train_losses, epoch_val_losses,
+        plot=True
     )
 
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         epochs_without_improvement = 0
         
-        logging.info(f"Best model with validation loss: {avg_val_loss:.4f}, at epoch {epoch + 1}")
+        logging.info(f"Best model with validation loss: {avg_val_loss:.4f}, at epoch {epoch + 1}, iteration {iteration}")
     else:
         epochs_without_improvement += 1
 
@@ -150,7 +170,7 @@ for epoch in range(num_epochs):
         print("Early stopping triggered.")
         break
 
-    logging.info(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+    logging.info(f"Turning an epoch. Current ==> Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
     logging.info(f"Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6f}\n")
 
 print("Training complete!")

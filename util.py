@@ -9,16 +9,37 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR, CosineAnnealingL
 
 from model import ParallelizedCrossAttentionModel
 
+def plot_loss(train_losses: list, val_losses: list, plot_path: str) -> None:
+    """
+    Plots and saves the training and validation loss.
+
+    Args:
+        train_losses (list): List of training losses.
+        val_losses (list): List of validation losses.
+        plot_path (str): Path to save the plot.
+    """
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(len(train_losses)), train_losses, label="Training Loss")
+    plt.plot(range(len(val_losses)), val_losses, label="Validation Loss")
+    plt.xlabel("Iterations")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss")
+    plt.legend()
+    plt.grid()
+    plt.savefig(plot_path)
+    plt.close()
+
 # Checkpoint Function
 def checkpoint(model: ParallelizedCrossAttentionModel,
                optimizer: torch.optim.Optimizer,
                scheduler,
                epoch: int,
                iteration: int, 
-               train_losses: list,
-               val_losses: list,
                checkpoint_dir: str,
-               plots_dir: str
+               plots_dir: str = None,
+               train_losses: list = None,
+               val_losses: list = None,
+               plot=False
             ) -> None:
     """
     Saves a model checkpoint and the training/validation loss plot.
@@ -42,18 +63,12 @@ def checkpoint(model: ParallelizedCrossAttentionModel,
     checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_iter_{iteration}.pt")
     torch.save(checkpoint, checkpoint_path)
 
-    # Plot and save training/validation loss
-    plot_path = os.path.join(plots_dir, f"loss_plot_epoch_{epoch}_iter_{iteration}.png")
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(len(train_losses)), train_losses, label="Training Loss")
-    plt.plot(range(len(val_losses)), val_losses, label="Validation Loss")
-    plt.xlabel("Iterations")
-    plt.ylabel("Loss")
-    plt.title("Training and Validation Loss")
-    plt.legend()
-    plt.grid()
-    plt.savefig(plot_path)
-    plt.close()
+    if plot:
+        if train_losses is None or val_losses is None or plots_dir is None:
+            raise ValueError("train_losses, val_losses, and plots_dir must be provided to plot losses.")
+        # Plot and save training/validation loss
+        plot_path = os.path.join(plots_dir, f"loss_plot_epoch_{epoch}_iter_{iteration}.png")
+        plot_loss(train_losses, val_losses, plot_path)
 
 
 def validate(model: ParallelizedCrossAttentionModel, 
