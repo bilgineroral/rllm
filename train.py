@@ -3,6 +3,7 @@ from functools import partial
 from tqdm import tqdm
 import logging
 import time
+import argparse
 import warnings
 
 import torch
@@ -16,8 +17,12 @@ from util import checkpoint, validate, load_config, get_optimizer, get_scheduler
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only=False.*")
 
-config_path = "./config/config.yaml"
-config = load_config(config_path)
+parser = argparse.ArgumentParser(description="Train or resume a model for RNA-Protein interaction.")
+parser.add_argument('--resume', type=str, default=None, help="Path to checkpoint file to resume training")
+parser.add_argument('--config', type=str, default="./config/config.yaml", help="Path to config file")
+args = parser.parse_args()
+
+config = load_config(args.config)
 
 log_path = config["log_path"]
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -75,6 +80,23 @@ optimizer = get_optimizer(model, config["optimizer"], config["learning_rate"])
 scheduler = get_scheduler(optimizer, config["scheduler"])
 criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token) 
 
+start_epoch, iteration = 0, 0
+epoch_train_losses, epoch_val_losses = [], []
+training_losses, validation_losses = [], []
+best_val_loss = float('inf')
+
+# Resume training if specified
+if args.resume:
+    print(f"Resuming training from checkpoint: {args.resume}")
+    checkpoint_data = torch.load(args.resume, map_location=device)
+    model.load_state_dict(checkpoint_data["model_state"])
+    optimizer.load_state_dict(checkpoint_data["optimizer_state"])
+    scheduler.load_state_dict(checkpoint_data["scheduler_state"])
+    start_epoch = checkpoint_data["epoch"]
+    iteration = checkpoint_data["iteration"]
+
+    print(f"Resumed at Epoch {start_epoch}, Iteration {iteration}")
+
 # Training Loop
 epoch_train_losses, epoch_val_losses = [], []
 training_losses, validation_losses = [], []
@@ -90,13 +112,13 @@ checkpoint_interval = config["checkpoint_interval"]
 plot_interval = config["plot_interval"]
 best_val_loss = float('inf')
 
-for epoch in range(num_epochs):
+for epoch in range(start_epoch, num_epochs):
     model.train()
     total_train_loss = 0.0
+    running_loss = 0.0
 
     # Progress bar for current epoch
     with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
-        running_loss = 0.0
         for batch_idx, sample in enumerate(pbar):
             protein_batch, rna_batch, protein_mask, rna_mask, target_batch = (
                 sample["protein"].to(device), 
