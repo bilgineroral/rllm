@@ -3,6 +3,7 @@ from functools import partial
 from tqdm import tqdm
 import logging
 import time
+import warnings
 
 import torch
 import torch.nn as nn
@@ -13,16 +14,10 @@ from dataset import ProteinRNADataset, collate_fn
 from tokenizer import RNATokenizer
 from util import checkpoint, validate, load_config, get_optimizer, get_scheduler
 
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only=False.*")
 
 config_path = "./config/config.yaml"
 config = load_config(config_path)
-
-""" protein_data_path = "./dataset/protein"
-rna_data_path = "./dataset/rna"
-
-pairs_train_path = "./dataset/train.txt"
-pairs_val_path = "./dataset/val.txt"
-pairs_test_path = "./dataset/test.txt" """
 
 log_path = "./train.log"
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -66,21 +61,22 @@ val_dataloader = DataLoader(
 )
 
 
-# Model, Loss, Optimizer
+# Model, Loss, Optimizer, Scheduler
 model = ParallelizedCrossAttentionModel(
     d_rna=config["d_rna"], d_protein=config["d_protein"], d_model=config["d_model"],
     num_heads=config["num_heads"], num_layers=config["num_layers"], vocab_size=vocab_size
 ).to(device)
 
+trainable_params = sum(p.numel() for p in model.parameters())
+print(f"Number of Trainable Parameters: {trainable_params}")
+
 optimizer = get_optimizer(model, config["optimizer"], config["learning_rate"])
 scheduler = get_scheduler(optimizer, config["scheduler"])
 criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token) 
 
-
-train_losses, val_losses = [], []
-epoch_train_losses, epoch_val_losses = [], []
-
 # Training Loop
+train_losses, val_losses = [], []
+
 num_epochs = config["num_epochs"]
 
 start = time.time()
@@ -132,10 +128,15 @@ for epoch in range(num_epochs):
     # Average Training Loss
     avg_train_loss = total_train_loss / len(train_dataloader)
     avg_val_loss = validate(model, val_dataloader, criterion, vocab_size, device)
-    epoch_train_losses.append(avg_train_loss)
-    epoch_val_losses.append(avg_val_loss)
+    train_losses.append(avg_train_loss)
+    val_losses.append(avg_val_loss)
 
     scheduler.step(avg_val_loss)
+
+    checkpoint(
+        model, optimizer, scheduler, epoch, iteration, 
+        train_losses, val_losses, checkpoint_dir, plots_dir
+    )
 
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
@@ -152,8 +153,5 @@ for epoch in range(num_epochs):
     logging.info(f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
     logging.info(f"Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6f}\n")
 
-    # Save final checkpoint and plot after epoch
-    checkpoint(model, optimizer, epoch, iteration, avg_train_loss, train_losses, val_losses, checkpoint_dir, plots_dir)
-
 print("Training complete!")
-print(f"Trained {num_epochs} epochs in {time.time() - start:.2f} seconds.")
+print(f"Trained {epoch + 1} epochs in {time.time() - start:.2f} seconds.")

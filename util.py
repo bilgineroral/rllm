@@ -9,33 +9,10 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR, CosineAnnealingL
 
 from model import ParallelizedCrossAttentionModel
 
-def plot_loss(train_losses: list, 
-                val_losses: list, 
-                iteration: int, 
-                plots_dir: str):
-    """
-    Plots the training and validation losses over epochs.
-
-    Args:
-        epoch_train_losses (list): List of average training losses per epoch.
-        epoch_val_losses (list): List of average validation losses per epoch.
-        plots_dir (str): Directory to save the plot.
-    """
-    plt.figure(figsize=(10, 5))
-    plt.plot(train_losses, label='Training Loss')
-    plt.plot(val_losses, label='Validation Loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Losses')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(f"{plots_dir}/epoch_{iteration}_loss_plot.png")
-    plt.close()
-
-
 # Checkpoint Function
 def checkpoint(model: ParallelizedCrossAttentionModel,
                optimizer: torch.optim.Optimizer,
+               scheduler,
                epoch: int,
                iteration: int, 
                train_losses: list,
@@ -60,6 +37,7 @@ def checkpoint(model: ParallelizedCrossAttentionModel,
         "iteration": iteration,
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
+        "scheduler_state": scheduler.state_dict(),
     }
     checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_iter_{iteration}.pt")
     torch.save(checkpoint, checkpoint_path)

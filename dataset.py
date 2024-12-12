@@ -49,17 +49,16 @@ class ProteinRNADataset(Dataset):
         rna_file = os.path.join(self.rna_folder, f"{pair['pdb_id']}_{pair['rna_chain']}.pt")
 
         # Load embeddings lazily
-        protein_emb = torch.load(protein_file).squeeze(0)  # Shape: [prot_len + 2, 1536]
-        rna_emb = torch.load(rna_file)
-        rna_emb = torch.tensor(rna_emb, dtype=torch.float32)  # Shape: [rna_num_layers (12), rna_len + 2, 768]
+        protein_emb = torch.load(protein_file, map_location="cuda").squeeze(0)  # Shape: [prot_len + 2, 1536]
+        rna_emb = torch.load(rna_file).float()  # Shape: [12, rna_len + 2, 768]
         
         # Remove the last token (EOS) from RNA embeddings
         rna_emb = rna_emb[:, :-1, :]  # Shape: [12, seq_len + 1, d_rna]
 
         # Tokenize RNA sequence and create target
         rna_tokens = self.tokenizer(pair["rna_seq"])  # List of token indices with <START> and <END>
-        rna_input = torch.tensor(rna_tokens[:-1], dtype=torch.long)  # Input
-        rna_target = torch.tensor(rna_tokens[1:], dtype=torch.long) # Target (shifted)
+        rna_input = rna_tokens[:-1]  # Input
+        rna_target = rna_tokens[1:]
 
         return {
             "protein": protein_emb,

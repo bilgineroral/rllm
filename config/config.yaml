@@ -1,5 +1,5 @@
 # Training Configuration
-batch_size: 32
+batch_size: 64
 num_layers: 12
 d_rna: 768
 d_protein: 1536
@@ -7,7 +7,7 @@ d_model: 768
 num_heads: 8
 num_epochs: 100
 learning_rate: 1.0e-4
-patience: 12    # Early stopping patience
+patience: 5    # Early stopping patience
 
 # Optimizer Configuration
 optimizer:
@@ -20,7 +20,7 @@ scheduler:
   params:
     mode: "min"             # Monitor 'min' value of validation loss
     factor: 0.5             # Reduce LR by this factor
-    patience: 3             # Number of validations with no improvement
+    patience: 2             # Number of validations with no improvement
     min_lr: 1.0e-6            # Minimum learning rate
 
 # Data Paths

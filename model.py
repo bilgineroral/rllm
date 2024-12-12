@@ -22,6 +22,7 @@ class CrossAttentionBlock(nn.Module):
         self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
+
     def forward(self, protein_emb: torch.Tensor, 
                 rna_emb: torch.Tensor, 
                 protein_mask: torch.Tensor = None, 
@@ -107,26 +108,26 @@ class MLPOutputHead(nn.Module):
     def __init__(self, d_model, num_layers, vocab_size, dropout=0.1):
         super(MLPOutputHead, self).__init__()
         
-        input_dim = d_model * num_layers  # 1536 * 12 = 18432
+        input_dim = d_model * num_layers 
         hidden_dim1 = input_dim // 2
         hidden_dim2 = input_dim // 4 
         self.output_head = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim1),   # Layer 1: 18432 -> 4096
+            nn.Linear(input_dim, hidden_dim1), 
             nn.LayerNorm(hidden_dim1),
             nn.ReLU(),
-            nn.Dropout(p=dropout),            # Optional: Dropout for regularization
+            nn.Dropout(p=dropout), 
 
-            nn.Linear(hidden_dim1, hidden_dim2),        # Layer 2: 4096 -> 1024
+            nn.Linear(hidden_dim1, hidden_dim2), 
             nn.LayerNorm(hidden_dim2),
             nn.ReLU(),
             nn.Dropout(p=dropout),
 
-            nn.Linear(hidden_dim2, d_model),         # Layer 3: 1024 -> 256
+            nn.Linear(hidden_dim2, d_model), 
             nn.LayerNorm(d_model),
             nn.ReLU(),
             nn.Dropout(p=dropout),
 
-            nn.Linear(d_model, vocab_size)    # Output Layer: 256 -> 8
+            nn.Linear(d_model, vocab_size) 
         )
         
     def forward(self, x):
