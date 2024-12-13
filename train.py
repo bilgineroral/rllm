@@ -23,6 +23,7 @@ parser.add_argument('--config', type=str, default="./config/config.yaml", help="
 args = parser.parse_args()
 
 config = load_config(args.config)
+logging.info("Configuration file loaded successfully.")
 
 log_path = config["log_path"]
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -182,7 +183,7 @@ for epoch in range(start_epoch, num_epochs):
         plot=True
     )
 
-    if avg_val_loss < best_val_loss:
+    if avg_val_loss - best_val_loss < -(1e-5): # Slight improvement
         best_val_loss = avg_val_loss
         epochs_without_improvement = 0
         

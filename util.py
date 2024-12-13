@@ -126,7 +126,7 @@ def validate(model: ParallelizedCrossAttentionModel,
 
 def load_config(config_path: str):
     """
-    Load YAML configuration file and set up logging.
+    Load YAML configuration file.
 
     Args:
         config_path (str): Path to the config.yaml file.
@@ -137,14 +137,6 @@ def load_config(config_path: str):
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
-    # Logging setup
-    log_path = config.get("log_path", "./train.log")
-    logging.basicConfig(
-        filename=log_path, 
-        level=logging.INFO, 
-        format='%(asctime)s - %(message)s'
-    )
-    logging.info("Configuration file loaded successfully.")
     return config
 
 def get_optimizer(model, optimizer_config, lr):

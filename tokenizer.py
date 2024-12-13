@@ -38,7 +38,7 @@ class RNATokenizer:
         tokens.append(self.eos_token)  # Add EOS token
         return tokens
     
-    def decode(self, tokens: list):
+    def decode(self, tokens: list, remove_special_tokens: bool = False):
         """
         Decodes a list of token indices into a string RNA sequence.
 
@@ -48,8 +48,11 @@ class RNATokenizer:
         Returns:
             sequence (str): Decoded RNA sequence.
         """
+        special_tokens = {self.cls_token, self.eos_token, self.pad_token, self.unk_token}
         sequence = []
         for token in tokens:
+            if remove_special_tokens and token in special_tokens:
+                continue
             char = list(self.vocab.keys())[list(self.vocab.values()).index(token)]
             sequence.append(char)
         return "".join(sequence)

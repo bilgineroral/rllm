@@ -1,4 +1,4 @@
-__pycache__
+__pycache__/
 dataset/protein/
 dataset/rna/
 dataset/test.txt
@@ -9,3 +9,7 @@ train.log
 plots
 code
 collect_code.sh
+ernierna/checkpoint/ERNIE-RNA_checkpoint/ERNIE-RNA_pretrain.pt
+ernierna/data
+ernierna/docs
+ernierna/results
