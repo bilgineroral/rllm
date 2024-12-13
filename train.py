@@ -86,17 +86,6 @@ epoch_train_losses, epoch_val_losses = [], []
 training_losses, validation_losses = [], []
 best_val_loss = float('inf')
 
-# Resume training if specified
-if args.resume:
-    print(f"Resuming training from checkpoint: {args.resume}")
-    checkpoint_data = torch.load(args.resume, map_location=device)
-    model.load_state_dict(checkpoint_data["model_state"])
-    optimizer.load_state_dict(checkpoint_data["optimizer_state"])
-    scheduler.load_state_dict(checkpoint_data["scheduler_state"])
-    start_epoch = checkpoint_data["epoch"]
-    iteration = checkpoint_data["iteration"]
-
-    print(f"Resumed at Epoch {start_epoch}, Iteration {iteration}")
 
 # Training Loop
 epoch_train_losses, epoch_val_losses = [], []
@@ -104,8 +93,21 @@ training_losses, validation_losses = [], []
 
 num_epochs = config["num_epochs"]
 
-start = time.time()
 iteration = 0
+
+# Resume training if specified
+if args.resume:
+    print(f"Resuming training from checkpoint: {args.resume}")
+    checkpoint_data = torch.load(args.resume, map_location=device)
+
+    model.load_state_dict(checkpoint_data["model_state"])
+    optimizer.load_state_dict(checkpoint_data["optimizer_state"])
+    scheduler.load_state_dict(checkpoint_data["scheduler_state"])
+
+    start_epoch = checkpoint_data["epoch"]
+    iteration = checkpoint_data["iteration"]
+
+    print(f"Resumed at Epoch {start_epoch}, Iteration {iteration}")
 
 early_stopping_patience = config["patience"]
 epochs_without_improvement = 0
@@ -113,14 +115,22 @@ checkpoint_interval = config["checkpoint_interval"]
 plot_interval = config["plot_interval"]
 best_val_loss = float('inf')
 
+start = time.time()
+
 for epoch in range(start_epoch, num_epochs):
     model.train()
     total_train_loss = 0.0
     running_loss = 0.0
 
-    # Progress bar for current epoch
+    current_iteration = 0
+
     with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
         for batch_idx, sample in enumerate(pbar):
+            current_iteration += 1
+
+            if current_iteration <= (iteration % len(train_dataloader)):
+                continue # Skip if resuming from a checkpoint
+
             protein_batch, rna_batch, protein_mask, rna_mask, target_batch = (
                 sample["protein"].to(device), 
                 sample["rna"].to(device), 
@@ -195,8 +205,10 @@ for epoch in range(start_epoch, num_epochs):
         print("Early stopping triggered.")
         break
 
-    logging.info(f"Turning an epoch. Current ==> Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+    logging.info(f"Turning an epoch. Current status => Epoch {epoch + 1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
     logging.info(f"Learning Rate: {scheduler.optimizer.param_groups[0]['lr']:.6f}\n")
 
 print("Training complete!")
-print(f"Trained {epoch + 1} epochs in {time.time() - start:.2f} seconds.")
+
+if not args.resume:
+    print(f"Trained {epoch + 1} epochs in {time.time() - start:.2f} seconds.")
