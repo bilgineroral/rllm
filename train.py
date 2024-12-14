@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from model import ParallelizedCrossAttentionModel
-from dataset import ProteinRNADataset, collate_fn
+from dataset import ProteinRNAEmbeddingsDataset, collate_embeddings
 from tokenizer import RNATokenizer
 from util import checkpoint, validate, load_config, get_optimizer, get_scheduler, plot_loss
 
@@ -43,13 +43,13 @@ tokenizer = RNATokenizer()
 vocab_size = tokenizer.vocab_size
 
 # DataLoader for Train and Validation
-train_dataset = ProteinRNADataset(
+train_dataset = ProteinRNAEmbeddingsDataset(
     pairs_file=config["data_paths"]["pairs_train_path"],
     protein_folder=config["data_paths"]["protein_data_path"], 
     rna_folder=config["data_paths"]["rna_data_path"],
     tokenizer=tokenizer
 )
-val_dataset = ProteinRNADataset(
+val_dataset = ProteinRNAEmbeddingsDataset(
     pairs_file=config["data_paths"]["pairs_val_path"],
     protein_folder=config["data_paths"]["protein_data_path"], 
     rna_folder=config["data_paths"]["rna_data_path"],
@@ -59,12 +59,12 @@ val_dataset = ProteinRNADataset(
 train_dataloader = DataLoader(
     train_dataset, 
     batch_size=config["batch_size"], 
-    collate_fn=partial(collate_fn, tokenizer=tokenizer)
+    collate_fn=partial(collate_embeddings, tokenizer=tokenizer)
 )
 val_dataloader = DataLoader(
     val_dataset, 
     batch_size=config["batch_size"], 
-    collate_fn=partial(collate_fn, tokenizer=tokenizer)
+    collate_fn=partial(collate_embeddings, tokenizer=tokenizer)
 )
 
 

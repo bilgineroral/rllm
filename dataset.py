@@ -4,14 +4,17 @@ from torch.utils.data import Dataset
 
 from tokenizer import RNATokenizer
 
-class ProteinRNADataset(Dataset):
+class ProteinRNAEmbeddingsDataset(Dataset):
+    """
+    Dataset for training model with pre-generated RNA and protein embeddings
+    """
     def __init__(self, pairs_file: str, 
                  protein_folder: str, 
                  rna_folder: str, 
                  tokenizer: RNATokenizer = None):
         """
         Args:
-            pairs_file: Path to 'representative_pairs.txt'
+            pairs_file: Path to 'train.txt'
             protein_folder: Path to protein embeddings
             rna_folder: Path to RNA embeddings
             tokenizer: Function that tokenizes RNA sequences into indices
@@ -66,9 +69,9 @@ class ProteinRNADataset(Dataset):
             "rna_input": rna_input, # unused when using pre-generated embeddings
             "rna_target": rna_target
         }
-    
 
-def collate_fn(batch, tokenizer=None, device: torch.device = torch.device('cuda')):
+
+def collate_embeddings(batch, tokenizer=None, device: torch.device = torch.device('cuda')):
     protein_lens = [item['protein'].shape[0] for item in batch]
     max_protein_len = max(protein_lens)
 
@@ -103,4 +106,85 @@ def collate_fn(batch, tokenizer=None, device: torch.device = torch.device('cuda'
         "protein_mask": protein_padding_mask,  # [batch_size, max_protein_len]
         "rna_mask": rna_padding_mask,          # [batch_size, max_rna_len]
         "rna_targets": rna_targets_padded   # [batch_size, max_rna_len]
+    }
+    
+
+class ProteinRNADataset(Dataset):
+    """
+    Dataset for training model with pre-generated protein embeddings
+    """
+    def __init__(self, pairs_file: str, 
+                 protein_folder: str,
+                 tokenizer: RNATokenizer = None,
+                 device: torch.device = torch.device('cuda')):
+        """
+        Args:
+            pairs_file: Path to 'train.txt"
+            protein_folder: Path to pre-generated protein embeddings
+            tokenizer: Function that tokenizes RNA sequences into indices
+        """
+        self.protein_folder = protein_folder
+        if tokenizer is None:
+            tokenizer = RNATokenizer()
+        self.tokenizer = tokenizer
+        self.device = device
+
+        # assuming pairs.txt has the following format:
+        # >{gene-name}
+        # {protein-sequence}${rna-sequence}
+        self.pairs = []
+        with open(pairs_file, 'r') as f:
+            lines = f.readlines()
+            assert len(lines) % 2 == 0, "Invalid pairs file"
+            for i in range(0, len(lines), 2):
+                # find protein embedding file
+                gene_name = lines[i].strip()[1:]
+                protein_embedding_file = os.path.join(protein_folder, f"{gene_name}.pt")
+                rna_seq = lines[i+1].strip().split('$')[1]
+
+                self.pairs.append({
+                    "protein_file": protein_embedding_file,
+                    "rna_seq": rna_seq
+                })
+
+    def __len__(self):
+        return len(self.pairs)
+    
+
+    def __getitem__(self, idx):
+        pair = self.pairs[idx]
+        protein_emb = torch.load(pair["protein_file"], map_location=self.device).squeeze(0)
+        rna_tokens = self.tokenizer(pair["rna_seq"]) # List of token indices with <CLS> and <EOS>
+
+        return {
+            "protein_embedding": protein_emb,
+            "rna": rna_tokens,
+        }
+
+
+def collate_protein_rna(batch, tokenizer=None, device: torch.device = torch.device('cuda')):
+    protein_lens = [item['protein'].shape[0] for item in batch]
+    max_protein_len = max(protein_lens)
+
+    # pad protein embeddings with zeros
+    protein_padded = torch.stack([
+        torch.cat([item['protein'].to(device), torch.zeros(max_protein_len - item['protein'].shape[0], item['protein'].shape[1]).to(device)])
+        for item in batch
+    ]) # Shape: [batch_size, max_protein_len, d_protein]
+    protein_padding_mask = torch.tensor([[False] * l + [True] * (max_protein_len - l) for l in protein_lens]).to(device)
+
+    # Target padding
+    if tokenizer is None:
+        tokenizer = RNATokenizer()
+
+    rnas = [item['rna'] for item in batch]
+    rnas_padded, rna_lengths = tokenizer.pad_sequences(rnas, pad_value=tokenizer.pad_token)
+    max_rna_len = max(rna_lengths)
+    rna_padding_mask = torch.tensor([[False] * len(rna) + [True] * (max_rna_len - len(rna)) for rna in rnas]).to(device)
+
+    return {
+        "protein": protein_padded,          # [batch_size, max_protein_len, d_protein]
+        "protein_mask": protein_padding_mask,  # [batch_size, max_protein_len]
+        "rna": rnas_padded,   # [batch_size, max_rna_len]
+        "rna_mask": rna_padding_mask,          # [batch_size, max_rna_len]
     }
