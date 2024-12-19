@@ -72,7 +72,7 @@ class RLLM(nn.Module):
         assert self.gpt_args["n_embd"] == d_model, "Model dimension must match pretrained GPT embedding dimension"
         assert vocab_size == self.gpt_args["vocab_size"] + 1, "<PAD> token must be added to the vocabulary"
 
-        self.gpt_args["frozen_layers"] = [i for i in range(self.gpt_args["n_layer"] // 2)] # indices of layers to freeze
+        self.gpt_args["frozen_layers"] = [i for i in range(self.gpt_args["n_layer"] // 3)] # indices of layers to freeze
         
         # freeze first 12 layers of GPT
         for idx, layer in enumerate(self.gpt.transformer.h):
