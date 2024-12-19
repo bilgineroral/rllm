@@ -7,6 +7,7 @@ rllm_dropout: 0.2
 gpt_dropout: 0.1
 
 tokenizer_path: "./tokenizer"
+gpt_weights_path: "./GenerRNA/checkpoint.pt"
 
 # Training Configuration
 batch_size: 32
