@@ -14,10 +14,10 @@ batch_size: 32
 num_epochs: 5
 rllm_learning_rate: 3.0e-4
 gpt_learning_rate: 5.0e-5
-checkpoint_interval: 3000  # Validate and save model every n iterations
+checkpoint_interval: 4000  # Validate and save model every n iterations
 plot_interval: 200        # Plot every n iterations
 
-warmup_ratio: 0.05       # warmup steps = warmup_ratio * total_steps
+warmup_ratio: 0.1       # warmup steps = warmup_ratio * total_steps
 optimizer_weight_decay: 0.01
 
 # Data Paths
