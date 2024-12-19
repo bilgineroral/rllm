@@ -76,7 +76,7 @@ class RLLM(nn.Module):
         
         # freeze first "frozen_layers" num. layers of GPT
         for idx, layer in enumerate(self.gpt.transformer.h):
-            if idx not in self.gpt_args["frozen_layers"]:
+            if idx in self.gpt_args["frozen_layers"]:
                 for param in layer.parameters():
                     param.requires_grad = False
 
