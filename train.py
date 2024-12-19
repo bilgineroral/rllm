@@ -172,8 +172,8 @@ def main():
                     train_perplexities.append((avg_train_perplexity, iteration))
 
                     # Save training losses and perplexities
-                    open(train_losses_path, 'a').write((avg_train_loss, iteration))
-                    open(train_perplexities_path, 'a').write((avg_train_perplexity, iteration))
+                    open(train_losses_path, 'a').write(f"{(avg_train_loss, iteration)}\n")
+                    open(train_perplexities_path, 'a').write(f"{(avg_train_perplexity, iteration)}\n")
 
                     running_train_loss = 0.0 # reset
                     running_train_tokens = 0 # reset
@@ -187,8 +187,8 @@ def main():
                     validation_perplexities.append((avg_val_perplexity, iteration))
 
                     # Save validation losses and perplexities
-                    open(val_losses_path, 'a').write((avg_val_loss, iteration))
-                    open(val_perplexities_path, 'a').write((avg_val_perplexity, iteration))
+                    open(val_losses_path, 'a').write(f"{(avg_val_loss, iteration)}\n")
+                    open(val_perplexities_path, 'a').write(f"{(avg_val_perplexity, iteration)}\n")
 
                     plot(validation_losses, os.path.join(plots_dir, f"val_loss_epoch_{epoch}_iter_{iteration}.png"))
                     plot(validation_perplexities, os.path.join(plots_dir, f"val_perplexity_epoch_{epoch}_iter_{iteration}.png"))
