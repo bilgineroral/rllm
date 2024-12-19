@@ -26,12 +26,12 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    log_path = config["log_path"]
+    log_path = config["output_paths"]["log_path"]
     logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
     logging.info("Configuration file loaded successfully.")
 
-    checkpoint_dir = config["directories"]["checkpoint_dir"]
-    plots_dir = config["directories"]["plots_dir"]
+    checkpoint_dir = config["output_paths"]["checkpoint_dir"]
+    plots_dir = config["output_paths"]["plots_dir"]
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(plots_dir, exist_ok=True)
 
@@ -99,6 +99,8 @@ def main():
     start_epoch, iteration = 0, 0
     training_losses, train_perplexities = [], [] # list of train. losses and perplexity scores saved at a fixed interval of steps
     validation_losses, validation_perplexities = [], [] # list of val. losses and perplexity scores saved at a fixed interval of steps
+    train_losses_path, train_perplexities_path = config["output_paths"]["train_losses_path"], config["output_paths"]["train_perplexities_path"]
+    val_losses_path, val_perplexities_path = config["output_paths"]["val_losses_path"], config["output_paths"]["val_perplexities_path"]
     best_val_loss = float('inf') # best validation loss throughout the entire training
 
     if args.resume:
@@ -169,6 +171,10 @@ def main():
                     training_losses.append((avg_train_loss, iteration))
                     train_perplexities.append((avg_train_perplexity, iteration))
 
+                    # Save training losses and perplexities
+                    open(train_losses_path, 'a').write((avg_train_loss, iteration))
+                    open(train_perplexities_path, 'a').write((avg_train_perplexity, iteration))
+
                     running_train_loss = 0.0 # reset
                     running_train_tokens = 0 # reset
                     
@@ -179,6 +185,10 @@ def main():
                     avg_val_loss, avg_val_perplexity = validate(model, val_dataloader, criterion, device=device)
                     validation_losses.append((avg_val_loss, iteration))
                     validation_perplexities.append((avg_val_perplexity, iteration))
+
+                    # Save validation losses and perplexities
+                    open(val_losses_path, 'a').write((avg_val_loss, iteration))
+                    open(val_perplexities_path, 'a').write((avg_val_perplexity, iteration))
 
                     plot(validation_losses, os.path.join(plots_dir, f"val_loss_epoch_{epoch}_iter_{iteration}.png"))
                     plot(validation_perplexities, os.path.join(plots_dir, f"val_perplexity_epoch_{epoch}_iter_{iteration}.png"))

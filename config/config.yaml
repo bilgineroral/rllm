@@ -29,10 +29,12 @@ data_paths:
   pairs_val_path: "./dataset/val.txt"
   pairs_test_path: "./dataset/test.txt"
 
-# Logging
-log_path: "./train.log"
-
 # Directories
-directories:
+output_paths:
   checkpoint_dir: "./checkpoints"
   plots_dir: "./plots"
+  train_losses_path: "./train_losses.txt"
+  val_losses_path: "./val_losses.txt"
+  train_perplexities_path: "./train_perplexities.txt"
+  val_perplexities_path: "./val_perplexities.txt"
+  log_path: "./train.log"
