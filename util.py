@@ -7,7 +7,7 @@ import torch
 
 from model import RLLM
 
-def plot(data: list, save_path: str, step: int = 10) -> None:
+def plot(data: list, save_path: str, step: int = 1) -> None:
     """
     Plots loss/perplexity values against iterations and saves the plot to a specified path.
     
@@ -41,6 +41,7 @@ def checkpoint(model: RLLM,
                scheduler: torch.optim.lr_scheduler.LambdaLR,
                epoch: int,
                iteration: int, 
+               start_index: int,
                checkpoint_path: str,
             ) -> None:
     """
@@ -58,6 +59,7 @@ def checkpoint(model: RLLM,
     checkpoint = {
         "epoch": epoch,
         "iteration": iteration,
+        "start_index": start_index,
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "scheduler_state": scheduler.state_dict(),

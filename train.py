@@ -41,11 +41,50 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(config["tokenizer_path"])
     vocab_size = tokenizer.vocab_size
 
+    model = RLLM(
+        config["d_protein"], config["d_model"], 
+        config["num_heads"], config["rllm_dropout"],
+        config["gpt_dropout"], config["gpt_weights_path"], 
+        vocab_size
+    ).to(device)
+
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("RLLM model initialized successfully.")
+    print(f"Number of trainable parameters: {trainable_params/1e6:.2f}M")
+
+    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, reduction="sum") 
+
+    if args.resume:
+        print(f"Resuming training from checkpoint: {args.resume}")
+        model_checkpoint = torch.load(args.resume, map_location=device)
+        model.load_state_dict(model_checkpoint["model_state"])
+
+        start_epoch = model_checkpoint["epoch"]
+        iteration = model_checkpoint["iteration"]
+
+        # Calculate start_index dynamically
+        tmp = ProteinRNADataset(
+            config["data_paths"]["pairs_train_path"],
+            config["data_paths"]["protein_data_path"],
+            tokenizer=tokenizer
+        ) # placeholder dataset to calculate start_index
+        if "start_index" in model_checkpoint:
+            start_index = model_checkpoint["start_index"]
+        else:
+            start_index = (iteration * config["batch_size"]) % len(tmp)
+        del tmp # free memory
+
+        print(f"Resuming training at epoch: {start_epoch} | batch: {start_index / config['batch_size']}")
+    else:
+        start_epoch, iteration = 0, 0
+        start_index = 0
+
     # DataLoader for Train and Validation
     train_dataset = ProteinRNADataset(
         config["data_paths"]["pairs_train_path"],
         config["data_paths"]["protein_data_path"],
         tokenizer=tokenizer,
+        offset=start_index
     )
     train_dataloader = DataLoader(
         train_dataset, 
@@ -67,21 +106,8 @@ def main():
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
         pin_memory=True
     )
-
-    # Model, Loss, Optimizer, Scheduler
-    model = RLLM(
-        config["d_protein"], config["d_model"], 
-        config["num_heads"], config["rllm_dropout"],
-        config["gpt_dropout"], config["gpt_weights_path"], 
-        vocab_size
-    ).to(device)
-
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print("RLLM model initialized successfully.")
-    print(f"Number of trainable parameters: {trainable_params/1e6:.2f}M")
-
+    
     num_epochs = config["num_epochs"]
-
     total_steps = len(train_dataloader) * num_epochs
     warmup_steps = int(config["warmup_ratio"] * total_steps) # learning rate warmup steps
 
@@ -93,28 +119,17 @@ def main():
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
     )
-    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, reduction="sum") 
+
+    if args.resume:
+        optimizer.load_state_dict(model_checkpoint["optimizer_state"])
+        scheduler.load_state_dict(model_checkpoint["scheduler_state"])
 
     # Training loop
-    start_epoch, iteration = 0, 0
     training_losses, train_perplexities = [], [] # list of train. losses and perplexity scores saved at a fixed interval of steps
     validation_losses, validation_perplexities = [], [] # list of val. losses and perplexity scores saved at a fixed interval of steps
     train_losses_path, train_perplexities_path = config["output_paths"]["train_losses_path"], config["output_paths"]["train_perplexities_path"]
     val_losses_path, val_perplexities_path = config["output_paths"]["val_losses_path"], config["output_paths"]["val_perplexities_path"]
     best_val_loss = float('inf') # best validation loss throughout the entire training
-
-    if args.resume:
-        print(f"Resuming training from checkpoint: {args.resume}")
-        model_checkpoint = torch.load(args.resume, map_location=device)
-
-        model.load_state_dict(model_checkpoint["model_state"])
-        optimizer.load_state_dict(model_checkpoint["optimizer_state"])
-        scheduler.load_state_dict(model_checkpoint["scheduler_state"])
-
-        start_epoch = model_checkpoint["epoch"]
-        iteration = model_checkpoint["iteration"]
-
-        print(f"Resuming training at epoch: {start_epoch} | iteration: {iteration}")
 
     checkpoint_interval = config["checkpoint_interval"]
     plot_interval = config["plot_interval"]
@@ -124,17 +139,10 @@ def main():
     for epoch in range(start_epoch, num_epochs):
         model.train()
 
-        running_train_loss = 0.0
-        running_train_tokens = 0
-        current_iteration = 0
+        running_train_loss, running_train_tokens = 0.0, 0
 
-        with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
+        with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch", initial=(iteration % len(train_dataloader))) as pbar:
             for batch in pbar:
-                current_iteration += 1
-
-                if args.resume and current_iteration < iteration % len(train_dataloader):
-                    continue
-
                 protein, protein_mask, rna_ids, rna_mask = (
                     batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
                     batch["protein_mask"].to(device), # mask shape like [B, prot_len]
@@ -200,15 +208,17 @@ def main():
                         checkpoint_filename = "best_" + checkpoint_filename
                         logging.info(f"Checkpointing best model with validation loss: {avg_val_loss:.6f}, at epoch {epoch + 1}, iteration {iteration}")
                     
+                    current_start_index = (iteration * config["batch_size"]) % len(train_dataset) # where next training batch will start
                     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
-                    checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
+                    checkpoint(model, optimizer, scheduler, epoch, iteration, current_start_index, checkpoint_path)
 
                 # Update progress bar with current loss 
                 num_valid_batch_tokens = (rna_tgt != tokenizer.pad_token_id).sum().item()
                 pbar.set_postfix(loss=f"{loss.item() / num_valid_batch_tokens:.6f}", refresh=True)
 
+        current_start_index = 0 # reset start index for next epoch
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
-        checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
+        checkpoint(model, optimizer, scheduler, (epoch + 1), iteration, current_start_index, checkpoint_path)
 
     end = time.time()
     print("Training complete!")

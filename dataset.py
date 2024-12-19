@@ -7,19 +7,22 @@ from transformers import AutoTokenizer
 class ProteinRNADataset(Dataset):
     def __init__(self, pairs_file: str, 
                  protein_folder: str, 
-                 tokenizer: AutoTokenizer = None):
+                 tokenizer: AutoTokenizer = None,
+                 offset: int = 0):
         """
         Args:
-            pairs_file: Path to 'pairs.txt'
+            pairs_file: Path to 'train.txt'
             protein_folder: Path to protein embeddings
             rna_folder: Path to RNA embeddings
             tokenizer: Function that tokenizes RNA sequences into indices
+            offset: Number of pairs to skip, useful for resuming sampling from the dataloader
         """
         if tokenizer is None:
             tokenizer = AutoTokenizer.from_pretrained("./tokenizer")
 
         self.protein_folder = protein_folder
         self.tokenizer = tokenizer
+        self.offset = offset
 
         # assuming pairs file has the following format:
         # >{gene_name}
@@ -41,7 +44,10 @@ class ProteinRNADataset(Dataset):
         return len(self.pairs)
 
     def __getitem__(self, idx):
-        pair = self.pairs[idx]
+        # Adjust the index by the offset to resume sampling from the dataloader from where it left off
+        # https://stackoverflow.com/a/67073875
+        _idx = (self.offset + idx) % len(self.pairs)
+        pair = self.pairs[_idx]
         
         protein_file = os.path.join(self.protein_folder, f"{pair['gene_name']}.pt")
         protein_emb = torch.load(protein_file, map_location="cpu").squeeze(0)  # Shape: [prot_len, d_protein]
