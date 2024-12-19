@@ -52,6 +52,7 @@ train_dataset = ProteinRNADataset(
 train_dataloader = DataLoader(
     train_dataset, 
     batch_size=config["batch_size"], 
+    num_workers=config["num_workers_train"],
     collate_fn=partial(collate_fn, tokenizer=tokenizer, device=device)
 )
 
@@ -64,6 +65,7 @@ val_dataset = ProteinRNADataset(
 val_dataloader = DataLoader(
     val_dataset, 
     batch_size=config["batch_size"], 
+    num_workers=config["num_workers_val"],
     collate_fn=partial(collate_fn, tokenizer=tokenizer, device=device)
 )
 

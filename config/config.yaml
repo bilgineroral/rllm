@@ -16,6 +16,8 @@ rllm_learning_rate: 3.0e-4
 gpt_learning_rate: 5.0e-5
 checkpoint_interval: 4000  # Validate and save model every n iterations
 plot_interval: 200        # Plot every n iterations
+num_workers_train: 8          # Number of workers for data loader
+num_workers_val: 4          # Number of workers for data loader
 
 warmup_ratio: 0.1       # warmup steps = warmup_ratio * total_steps
 optimizer_weight_decay: 0.01
