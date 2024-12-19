@@ -7,8 +7,7 @@ from transformers import AutoTokenizer
 class ProteinRNADataset(Dataset):
     def __init__(self, pairs_file: str, 
                  protein_folder: str, 
-                 tokenizer: AutoTokenizer = None,
-                 device: torch.device | str = None):
+                 tokenizer: AutoTokenizer = None):
         """
         Args:
             pairs_file: Path to 'pairs.txt'
@@ -18,14 +17,9 @@ class ProteinRNADataset(Dataset):
         """
         if tokenizer is None:
             tokenizer = AutoTokenizer.from_pretrained("./tokenizer")
-        if device is None:
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        elif isinstance(device, str):
-            device = torch.device(device)
 
         self.protein_folder = protein_folder
         self.tokenizer = tokenizer
-        self.device = device
 
         # assuming pairs file has the following format:
         # >{gene_name}
@@ -50,7 +44,7 @@ class ProteinRNADataset(Dataset):
         pair = self.pairs[idx]
         
         protein_file = os.path.join(self.protein_folder, f"{pair['gene_name']}.pt")
-        protein_emb = torch.load(protein_file, map_location=self.device).squeeze(0)  # Shape: [prot_len, d_protein]
+        protein_emb = torch.load(protein_file).squeeze(0)  # Shape: [prot_len, d_protein]
 
         return {
             "protein": protein_emb, # embedding shape like [prot_len, d_protein]
@@ -58,28 +52,24 @@ class ProteinRNADataset(Dataset):
         }
 
     
-def collate_fn(batch, tokenizer=None, device: torch.device = None):
+def collate_fn(batch, tokenizer=None):
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained("./tokenizer")
-    if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    elif isinstance(device, str):
-        device = torch.device(device)
 
     protein_lens = [item['protein'].shape[0] for item in batch]
     max_protein_len = max(protein_lens)
 
     # pad protein embeddings with zeros
     protein_padded = torch.stack([
-        torch.cat([item['protein'], torch.zeros(max_protein_len - item['protein'].shape[0], item['protein'].shape[1], device=device)])
+        torch.cat([item['protein'], torch.zeros(max_protein_len - item['protein'].shape[0], item['protein'].shape[1])])
         for item in batch
     ]) # Shape: [batch_size, max_protein_len, d_protein]
-    protein_padding_mask = torch.tensor([[False] * l + [True] * (max_protein_len - l) for l in protein_lens], device=device)  # Shape: [batch_size, max_protein_len]
+    protein_padding_mask = torch.tensor([[False] * l + [True] * (max_protein_len - l) for l in protein_lens])  # Shape: [batch_size, max_protein_len]
 
     rna_sequences = [item['rna'] for item in batch]
     tokens = tokenizer(rna_sequences, padding="longest", return_tensors="pt")
-    rna_ids = tokens["input_ids"].to(device)
-    rna_mask = tokens["attention_mask"].to(device)
+    rna_ids = tokens["input_ids"]
+    rna_mask = tokens["attention_mask"]
     rna_mask = rna_mask == 0  # Convert to causal mask
 
     return {

@@ -64,6 +64,7 @@ def checkpoint(model: RLLM,
 def validate(model: RLLM, 
              dataloader: torch.utils.data.DataLoader, 
              criterion: torch.nn.Module,
+             device: torch.device
             ) -> float:
     """
     Validates the model on the validation set or a subset of it.
@@ -88,10 +89,10 @@ def validate(model: RLLM,
     with torch.no_grad():
         for batch in dataloader:
             protein, protein_mask, rna_ids, rna_mask = (
-                batch["protein"], # embedding shape like [B, prot_len, d_protein]
-                batch["protein_mask"], # mask shape like [B, prot_len]
-                batch["rna"], # tokenized RNA sequence shape like [B, rna_len]
-                batch["rna_mask"] # mask shape like [B, rna_len]
+                batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
+                batch["protein_mask"].to(device), # mask shape like [B, prot_len]
+                batch["rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
+                batch["rna_mask"].to(device) # mask shape like [B, rna_len]
             )
 
             rna_src = rna_ids[:, :-1] # remove last token for source

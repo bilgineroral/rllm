@@ -47,26 +47,26 @@ train_dataset = ProteinRNADataset(
     config["data_paths"]["pairs_train_path"],
     config["data_paths"]["protein_data_path"],
     tokenizer=tokenizer,
-    device=device
 )
 train_dataloader = DataLoader(
     train_dataset, 
     batch_size=config["batch_size"], 
     num_workers=config["num_workers_train"],
-    collate_fn=partial(collate_fn, tokenizer=tokenizer, device=device)
+    collate_fn=partial(collate_fn, tokenizer=tokenizer),
+    pin_memory=True
 )
 
 val_dataset = ProteinRNADataset(
     config["data_paths"]["pairs_val_path"],
     config["data_paths"]["protein_data_path"],
     tokenizer=tokenizer,
-    device=device
 )
 val_dataloader = DataLoader(
     val_dataset, 
     batch_size=config["batch_size"], 
     num_workers=config["num_workers_val"],
-    collate_fn=partial(collate_fn, tokenizer=tokenizer, device=device)
+    collate_fn=partial(collate_fn, tokenizer=tokenizer),
+    pin_memory=True
 )
 
 # Model, Loss, Optimizer, Scheduler
@@ -135,10 +135,10 @@ for epoch in range(start_epoch, num_epochs):
                 continue
 
             protein, protein_mask, rna_ids, rna_mask = (
-                batch["protein"], # embedding shape like [B, prot_len, d_protein]
-                batch["protein_mask"], # mask shape like [B, prot_len]
-                batch["rna"], # tokenized RNA sequence shape like [B, rna_len]
-                batch["rna_mask"] # mask shape like [B, rna_len]
+                batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
+                batch["protein_mask"].to(device), # mask shape like [B, prot_len]
+                batch["rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
+                batch["rna_mask"].to(device) # mask shape like [B, rna_len]
             )
             optimizer.zero_grad()
 
@@ -178,7 +178,7 @@ for epoch in range(start_epoch, num_epochs):
                 plot(train_perplexities, os.path.join(plots_dir, f"train_perplexity_epoch_{epoch}_iter_{iteration}.png"))
 
             if iteration % checkpoint_interval == 0:
-                avg_val_loss, avg_val_perplexity = validate(model, val_dataloader, criterion)
+                avg_val_loss, avg_val_perplexity = validate(model, val_dataloader, criterion, device=device)
                 validation_losses.append((avg_val_loss, iteration))
                 validation_perplexities.append((avg_val_perplexity, iteration))
 
