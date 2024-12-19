@@ -7,24 +7,28 @@ import torch
 
 from model import RLLM
 
-def plot(data: list, save_path: str) -> None:
+def plot(data: list, save_path: str, step: int = 10) -> None:
     """
     Plots loss/perplexity values against iterations and saves the plot to a specified path.
     
     Args:
         data (list of tuples): A list where each tuple contains (value, iteration).
         save_path (str): The file path to save the generated plot.
+        step (int): The step size for plotting data points.
     """
     # Unpack loss values and iterations
     loss_values, iterations = zip(*data)
     
-    # Plot the loss values
-    plt.figure(figsize=(8, 6))
-    plt.plot(iterations, loss_values, marker='o', linestyle='-', linewidth=2)
-    plt.xticks(iterations) 
+    # Reduce the number of points to plot
+    reduced_iterations = iterations[::step]
+    reduced_loss_values = loss_values[::step]
+    
+    # Plot the raw loss values
+    plt.figure(figsize=(10, 6))
+    plt.plot(reduced_iterations, reduced_loss_values, marker='o', linestyle='-', linewidth=2)
     plt.xlabel('Iterations')
     plt.ylabel('Loss Value')
-    plt.title('Loss vs Iterations')
+    plt.title('Loss vs Iterations (Raw Data)')
     plt.grid(True)
     
     # Save the plot
