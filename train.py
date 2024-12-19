@@ -135,13 +135,13 @@ def main():
     plot_interval = config["plot_interval"]
 
     start = time.time() # training start
+    model.train()
 
     for epoch in range(start_epoch, num_epochs):
-        model.train()
 
         running_train_loss, running_train_tokens = 0.0, 0
 
-        with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch", initial=(iteration % len(train_dataloader))) as pbar:
+        with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
             for batch in pbar:
                 protein, protein_mask, rna_ids, rna_mask = (
                     batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
