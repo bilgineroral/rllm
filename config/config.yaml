@@ -1,34 +1,27 @@
+# Model config
+d_protein: 1152
+d_model: 1024
+num_heads: 8 # Number of attention heads in cross attention blocks
+
+rllm_dropout: 0.2
+gpt_dropout: 0.1
+
+tokenizer_path: "./tokenizer"
+
 # Training Configuration
 batch_size: 32
-num_layers: 12
-d_rna: 768
-d_protein: 1536
-d_model: 768
-num_heads: 8
-num_epochs: 20
-learning_rate: 3.0e-4
-patience: 4    # Early stopping patience (in epochs)
-checkpoint_interval: 100  # Save model every n iterations
-plot_interval: 50        # Plot every n iterations
+num_epochs: 5
+rllm_learning_rate: 3.0e-4
+gpt_learning_rate: 5.0e-5
+checkpoint_interval: 3000  # Validate and save model every n iterations
+plot_interval: 200        # Plot every n iterations
 
-# Optimizer Configuration
-optimizer:
-  type: "AdamW"   # Options: Adam, AdamW, SGD
-  weight_decay: 1.0e-4
-
-# Scheduler Configuration
-scheduler:
-  type: "ReduceLROnPlateau"  # Options: StepLR, CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR
-  params:
-    mode: "min"             # Monitor 'min' value of validation loss
-    factor: 0.5             # Reduce LR by this factor
-    patience: 3             # Number of validations with no improvement
-    min_lr: 1.0e-6            # Minimum learning rate
+warmup_ratio: 0.05       # warmup steps = warmup_ratio * total_steps
+optimizer_weight_decay: 0.01
 
 # Data Paths
 data_paths:
-  protein_data_path: "./dataset/protein"
-  rna_data_path: "./dataset/rna"
+  protein_data_path: "./dataset/protein" # path to protein embeddings folder
   pairs_train_path: "./dataset/train.txt"
   pairs_val_path: "./dataset/val.txt"
   pairs_test_path: "./dataset/test.txt"
@@ -40,4 +33,3 @@ log_path: "./train.log"
 directories:
   checkpoint_dir: "./checkpoints"
   plots_dir: "./plots"
-  epochs_plots_dir: "./plots/epochs"
