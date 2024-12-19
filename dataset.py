@@ -35,7 +35,6 @@ class ProteinRNADataset(Dataset):
             lines = f.readlines()
             assert len(lines) % 2 == 0, "Invalid pairs file"
             for i in range(0, len(lines), 2):  # Every two lines
-                line = line.strip()
                 gene_name = lines[i].strip()[1:]
                 rna_seq = lines[i+1].strip().split('$')[1]
                 
@@ -50,7 +49,7 @@ class ProteinRNADataset(Dataset):
     def __getitem__(self, idx):
         pair = self.pairs[idx]
         
-        protein_file = os.path.join(self.protein_folder, f"{pair["gene_name"]}.pt")
+        protein_file = os.path.join(self.protein_folder, f"{pair['gene_name']}.pt")
         protein_emb = torch.load(protein_file, map_location=self.device).squeeze(0)  # Shape: [prot_len, d_protein]
 
         return {
@@ -72,10 +71,10 @@ def collate_fn(batch, tokenizer=None, device: torch.device = None):
 
     # pad protein embeddings with zeros
     protein_padded = torch.stack([
-        torch.cat([item['protein'], torch.zeros(max_protein_len - item['protein'].shape[0], item['protein'].shape[1])])
+        torch.cat([item['protein'], torch.zeros(max_protein_len - item['protein'].shape[0], item['protein'].shape[1], device=device)])
         for item in batch
     ]) # Shape: [batch_size, max_protein_len, d_protein]
-    protein_padding_mask = torch.tensor([[False] * l + [True] * (max_protein_len - l) for l in protein_lens]).to(device)
+    protein_padding_mask = torch.tensor([[False] * l + [True] * (max_protein_len - l) for l in protein_lens], device=device)  # Shape: [batch_size, max_protein_len]
 
     rna_sequences = [item['rna'] for item in batch]
     tokens = tokenizer(rna_sequences, padding="longest", return_tensors="pt")

@@ -44,8 +44,8 @@ vocab_size = tokenizer.vocab_size
 
 # DataLoader for Train and Validation
 train_dataset = ProteinRNADataset(
-    config["pairs_train_path"],
-    config["protein_data_path"],
+    config["data_paths"]["pairs_train_path"],
+    config["data_paths"]["protein_data_path"],
     tokenizer=tokenizer,
     device=device
 )
@@ -56,8 +56,8 @@ train_dataloader = DataLoader(
 )
 
 val_dataset = ProteinRNADataset(
-    config["pairs_val_path"],
-    config["protein_data_path"],
+    config["data_paths"]["pairs_val_path"],
+    config["data_paths"]["protein_data_path"],
     tokenizer=tokenizer,
     device=device
 )
@@ -77,26 +77,25 @@ model = RLLM(
 
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print("RLLM model initialized successfully.")
-print(f"Number of Trainable Parameters: {trainable_params}")
+print(f"Number of trainable parameters: {trainable_params/1e6:.2f}M")
 
 num_epochs = config["num_epochs"]
 
 total_steps = len(train_dataloader) * num_epochs
 warmup_steps = int(config["warmup_ratio"] * total_steps) # learning rate warmup steps
 
-# TODO: different lrs for different layers
-optimizer = optim.AdamW(
+optimizer = optim.AdamW([
     {'params': model.get_trainable_parameters(cross_attn=True), 'lr': config["rllm_learning_rate"]},  # Cross-attention blocks
     {'params': model.get_trainable_parameters(layer_norm=True), 'lr': config["rllm_learning_rate"]},  # LayerNorm blocks
     {'params': model.get_trainable_parameters(gpt=True), 'lr': config["gpt_learning_rate"]},  # Trainable GPT layers
-    weight_decay=config["optimizer_weight_decay"])
+], weight_decay=config["optimizer_weight_decay"])
 scheduler = get_linear_schedule_with_warmup(
     optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
 )
 criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, reduction="sum") 
 
 # Training loop
-epoch, iteration = 0, 0
+start_epoch, iteration = 0, 0
 training_losses, train_perplexities = [], [] # list of train. losses and perplexity scores saved at a fixed interval of steps
 validation_losses, validation_perplexities = [], [] # list of val. losses and perplexity scores saved at a fixed interval of steps
 best_val_loss = float('inf') # best validation loss throughout the entire training
@@ -109,17 +108,17 @@ if args.resume:
     optimizer.load_state_dict(model_checkpoint["optimizer_state"])
     scheduler.load_state_dict(model_checkpoint["scheduler_state"])
 
-    epoch = model_checkpoint["epoch"]
+    start_epoch = model_checkpoint["epoch"]
     iteration = model_checkpoint["iteration"]
 
-    print(f"Resuming training at epoch: {epoch} | iteration: {iteration}")
+    print(f"Resuming training at epoch: {start_epoch} | iteration: {iteration}")
 
 checkpoint_interval = config["checkpoint_interval"]
 plot_interval = config["plot_interval"]
 
 start = time.time() # training start
 
-for epoch in range(epoch, num_epochs):
+for epoch in range(start_epoch, num_epochs):
     model.train()
 
     running_train_loss = 0.0
@@ -142,11 +141,12 @@ for epoch in range(epoch, num_epochs):
             optimizer.zero_grad()
 
             rna_src = rna_ids[:, :-1] # remove last token for source 
+            rna_mask = rna_mask[:, :-1] # remove last token for source
             rna_tgt = rna_ids[:, 1:] # remove first token for target
 
             logits = model(protein, rna_src, protein_mask, rna_mask)
-            logits = logits.view(-1, vocab_size)
-            rna_tgt = rna_tgt.view(-1)
+            logits = logits.reshape(-1, vocab_size)
+            rna_tgt = rna_tgt.reshape(-1)
 
             loss = criterion(logits, rna_tgt)
             loss.backward()
@@ -193,8 +193,9 @@ for epoch in range(epoch, num_epochs):
                 checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
                 checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
 
-            # Update progress bar with current loss
-            pbar.set_postfix(loss=f"{loss.item():.6f}")
+            # Update progress bar with current loss 
+            num_valid_batch_tokens = (rna_tgt != pad_token_id).sum().item()
+            pbar.set_postfix(loss=f"{loss.item() / num_valid_batch_tokens:.6f}", refresh=True)
 
     checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
     checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)

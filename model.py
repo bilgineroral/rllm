@@ -20,7 +20,6 @@ class CrossAttentionBlock(nn.Module):
         self.cross_attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
 
-
     def forward(self,
                 protein_emb: torch.Tensor, 
                 rna_emb: torch.Tensor, 
@@ -105,7 +104,7 @@ class RLLM(nn.Module):
         # Generate RNA embeddings from GPT
         device = protein_emb.device
         _, t = rna_ids.size()
-        assert t <= self.gpt_args.block_size, f"Cannot forward sequence of length {t}, block size is only {self.gpt_args.block_size}"
+        assert t <= self.gpt_args['block_size'], f"Cannot forward sequence of length {t}, block size is only {self.gpt_args['block_size']}"
 
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t), t: RNA sequence length
 
@@ -114,7 +113,7 @@ class RLLM(nn.Module):
 
         x = self.gpt.transformer.drop(tok_emb + pos_emb)
 
-        for block_idx, block in enumerate(self.transformer.h):
+        for block_idx, block in enumerate(self.gpt.transformer.h):
             if block_idx in self.gpt_args["frozen_layers"]: 
                 x = block(x, mlp=False)
                 x = block(x, mlp=True)

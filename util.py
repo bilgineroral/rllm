@@ -30,7 +30,6 @@ def plot(data: list, save_path: str) -> None:
     # Save the plot
     plt.savefig(save_path)
     plt.close()
-    print(f"Plot saved to {save_path}")
 
 
 def checkpoint(model: RLLM,
@@ -96,11 +95,12 @@ def validate(model: RLLM,
             )
 
             rna_src = rna_ids[:, :-1] # remove last token for source
+            rna_mask = rna_mask[:, :-1]
             rna_tgt = rna_ids[:, 1:]
 
             logits = model(protein, rna_src, protein_mask, rna_mask)
-            logits = logits.view(-1, logits.shape[-1])
-            rna_tgt = rna_tgt.view(-1)
+            logits = logits.reshape(-1, logits.shape[-1])
+            rna_tgt = rna_tgt.reshape(-1)
 
             loss = criterion(logits, rna_tgt)
             total_loss += loss.item()
