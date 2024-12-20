@@ -1,4 +1,5 @@
 __pycache__/
+report/
 dataset/
 checkpoints/
 train.log

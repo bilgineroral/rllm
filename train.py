@@ -72,10 +72,7 @@ def main():
         )) # total number of training samples
         gc.collect()
 
-        if "start_index" in model_checkpoint:
-            start_index = model_checkpoint["start_index"] # index of the example in the training dataset where training will resume
-        else:
-            start_index = (iteration * config["batch_size"]) % train_len
+        start_index = (iteration * config["batch_size"]) % train_len
         
         print(f"Resuming training at epoch: {start_epoch} | iteration: {iteration} | start_index: {start_index}")
     else:
@@ -131,7 +128,12 @@ def main():
     validation_losses, validation_perplexities = [], [] # list of val. losses and perplexity scores saved at a fixed interval of steps
     train_losses_path, train_perplexities_path = config["output_paths"]["train_losses_path"], config["output_paths"]["train_perplexities_path"]
     val_losses_path, val_perplexities_path = config["output_paths"]["val_losses_path"], config["output_paths"]["val_perplexities_path"]
-    best_val_loss = float('inf') # best validation loss throughout the entire training
+    
+    early_stopping = config["early_stopping"]
+    patience = config["early_stopping_patience"]  # Number of epochs with no improvement to wait
+
+    best_val_loss = float('inf')
+    val_loss_not_improved = 0
 
     checkpoint_interval = config["checkpoint_interval"]
     plot_interval = config["plot_interval"]
@@ -234,8 +236,14 @@ def main():
 
                     checkpoint_filename = f"checkpoint_epoch_{epoch}_iter_{iteration}.pt"
 
+                    if early_stopping and avg_val_loss >= best_val_loss:
+                        val_loss_not_improved += 1
+                        if val_loss_not_improved >= patience:
+                            logging.info(f"Validation loss not improved for {patience} epochs. Early stopping triggered!")
+                            break
                     if avg_val_loss < best_val_loss: # improvement in validation loss
                         best_val_loss = avg_val_loss
+                        val_loss_not_improved = 0
                         checkpoint_filename = "best_" + checkpoint_filename
                         logging.info(f"Checkpointing best model with validation loss: {avg_val_loss:.6f}, at epoch {epoch + 1}, iteration {iteration}")
                     
