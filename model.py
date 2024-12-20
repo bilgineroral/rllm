@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from GenerRNA.model import GPT, GPTConfig
-import einops
 
 class CrossAttentionBlock(nn.Module):
     def __init__(self, d_protein: int = 1536, 
@@ -18,22 +17,24 @@ class CrossAttentionBlock(nn.Module):
         self.protein_proj = nn.Linear(d_protein, d_model)
         self.rna_proj = nn.Linear(d_model, d_model)
         self.cross_attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True, dropout=dropout)
+        self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self,
-                protein_emb: torch.Tensor, 
-                rna_emb: torch.Tensor, 
+                protein: torch.Tensor, 
+                rna: torch.Tensor, 
                 protein_mask: torch.Tensor = None, 
                 rna_mask: torch.Tensor = None) -> torch.Tensor:
         """
-        protein_emb: [B, prot_len, d_protein]
-        rna_emb: [B, rna_len, d_model]
+        protein: [B, prot_len, d_protein]
+        rna: [B, rna_len, d_model]
         protein_mask: [B, prot_len]
         rna_mask: [B, rna_len]
         """
-        # Project protein and RNA embeddings to a common dimension
-        protein_proj = self.dropout(self.protein_proj(protein_emb))  # [B, prot_len, d_model]
-        rna_proj = self.dropout(self.rna_proj(rna_emb))              # [B, rna_len, d_model]
+        # Project protein and RNA embeddings to a common dimension        
+        rna = self.layer_norm(rna) # apply layer norm here because GPT layers don't apply layer norm at the end, but at the begining
+        rna_proj = self.dropout(self.rna_proj(rna))              # [B, rna_len, d_model]
+        protein_proj = self.dropout(self.protein_proj(protein))  # [B, prot_len, d_model]
 
         # Cross Attention: RNA queries protein
         attn_output, _ = self.cross_attention(
@@ -74,21 +75,17 @@ class RLLM(nn.Module):
 
         self.gpt_args["frozen_layers"] = [i for i in range(self.gpt_args["n_layer"] - (self.gpt_args["n_layer"] // 3))] # indices of layers to freeze
         
-        # freeze first "frozen_layers" num. layers of GPT
+        # freeze first "frozen_layers" layers of GPT
         for idx, layer in enumerate(self.gpt.transformer.h):
             if idx in self.gpt_args["frozen_layers"]:
                 for param in layer.parameters():
                     param.requires_grad = False
 
-        num_layers = len(self.gpt.transformer.h) - len(self.gpt_args["frozen_layers"]) # number of cross-attention / layer-norm blocks
+        num_layers = len(self.gpt.transformer.h) - len(self.gpt_args["frozen_layers"]) # number of layer-norm + cross-attention blocks
         self.cross_attention_blocks = nn.ModuleList([
             CrossAttentionBlock(d_protein, d_model, num_heads, rllm_dropout)
             for _ in range(num_layers)
         ])
-        self.layer_norm_blocks = nn.ModuleList([
-            nn.LayerNorm(d_model) for _ in range(num_layers)
-        ])
-
 
     def forward(self,
                 protein_emb: torch.Tensor, 
@@ -115,18 +112,14 @@ class RLLM(nn.Module):
 
         for block_idx, block in enumerate(self.gpt.transformer.h):
             if block_idx in self.gpt_args["frozen_layers"]: 
-                x = block(x, mlp=False)
-                x = block(x, mlp=True)
+                x = block(x) # frozen layer, keep GPT layer as is
             else:
                 # first self-attention, then cross-attention
                 idx = block_idx - len(self.gpt_args["frozen_layers"]) # cross-attention block index
                 cross_attn_block = self.cross_attention_blocks[idx]
-                layer_norm_block = self.layer_norm_blocks[idx]
 
-                x = block(x, mlp=False)
+                x = block(x)
                 x = x + cross_attn_block(protein_emb, x, protein_mask, rna_mask)
-                x = layer_norm_block(x)
-                x = block(x, mlp=True)
 
         x = self.gpt.transformer.ln_f(x) # Apply layer normalization to the final output
         logits = self.gpt.lm_head(x)
@@ -138,7 +131,7 @@ class RLLM(nn.Module):
     def initialize_gpt(cls, 
                        dropout: float = 0.0, 
                        gpt_checkpoint_path: str = "./GenerRNA/checkpoint.pt",
-                       vocab_size: int = 1025):
+                       vocab_size: int = 1024 + 1): # +1 for <PAD> token
         """
         Initialize the GPT decoder with new vocab size
         """
@@ -196,9 +189,6 @@ class RLLM(nn.Module):
 
         if cross_attn:
             params += list(self.cross_attention_blocks.parameters())
-
-        if layer_norm:
-            params += list(self.layer_norm_blocks.parameters())
 
         if gpt:
             params += [param for param in self.gpt.parameters() if param.requires_grad]

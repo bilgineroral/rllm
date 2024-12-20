@@ -116,7 +116,6 @@ def main():
 
     optimizer = optim.AdamW([
         {'params': model.get_trainable_parameters(cross_attn=True), 'lr': config["rllm_learning_rate"]},  # Cross-attention blocks
-        {'params': model.get_trainable_parameters(layer_norm=True), 'lr': config["rllm_learning_rate"]},  # LayerNorm blocks
         {'params': model.get_trainable_parameters(gpt=True), 'lr': config["gpt_learning_rate"]},  # Trainable GPT layers
     ], weight_decay=config["optimizer_weight_decay"])
     scheduler = get_linear_schedule_with_warmup(
