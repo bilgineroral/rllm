@@ -1,4 +1,5 @@
 import os
+import gc
 from functools import partial
 from tqdm import tqdm
 import logging
@@ -28,7 +29,6 @@ def main():
     config = load_config(args.config)
     log_path = config["output_paths"]["log_path"]
     logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(message)s')
-    logging.info("Configuration file loaded successfully.")
 
     checkpoint_dir = config["output_paths"]["checkpoint_dir"]
     plots_dir = config["output_paths"]["plots_dir"]
@@ -48,8 +48,10 @@ def main():
         vocab_size
     ).to(device)
 
+    params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("RLLM model initialized successfully.")
+    print(f"Number of parameters: {params/1e6:.2f}M")
     print(f"Number of trainable parameters: {trainable_params/1e6:.2f}M")
 
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, reduction="sum") 
@@ -63,18 +65,19 @@ def main():
         iteration = model_checkpoint["iteration"]
 
         # Calculate start_index dynamically
-        tmp = ProteinRNADataset(
+        train_len = len(ProteinRNADataset(
             config["data_paths"]["pairs_train_path"],
             config["data_paths"]["protein_data_path"],
             tokenizer=tokenizer
-        ) # placeholder dataset to calculate start_index
-        if "start_index" in model_checkpoint:
-            start_index = model_checkpoint["start_index"]
-        else:
-            start_index = (iteration * config["batch_size"]) % len(tmp)
-        del tmp # free memory
+        )) # total number of training samples
+        gc.collect()
 
-        print(f"Resuming training at epoch: {start_epoch} | batch: {start_index / config['batch_size']}")
+        if "start_index" in model_checkpoint:
+            start_index = model_checkpoint["start_index"] # index of the example in the training dataset where training will resume
+        else:
+            start_index = (iteration * config["batch_size"]) % train_len
+        
+        print(f"Resuming training at epoch: {start_epoch} | iteration: {iteration} | start_index: {start_index}")
     else:
         start_epoch, iteration = 0, 0
         start_index = 0
@@ -83,8 +86,7 @@ def main():
     train_dataset = ProteinRNADataset(
         config["data_paths"]["pairs_train_path"],
         config["data_paths"]["protein_data_path"],
-        tokenizer=tokenizer,
-        offset=start_index
+        tokenizer=tokenizer
     )
     train_dataloader = DataLoader(
         train_dataset, 
@@ -138,11 +140,40 @@ def main():
     model.train()
 
     for epoch in range(start_epoch, num_epochs):
+        offset = start_index if epoch == start_epoch else 0
+
+        train_dataset = ProteinRNADataset(
+            config["data_paths"]["pairs_train_path"],
+            config["data_paths"]["protein_data_path"],
+            tokenizer=tokenizer,
+            offset=offset
+        )
+        train_dataloader = DataLoader(
+            train_dataset, 
+            batch_size=config["batch_size"], 
+            num_workers=config["num_workers_train"],
+            collate_fn=partial(collate_fn, tokenizer=tokenizer),
+            pin_memory=True
+        )
+
+        # Calculate total batches for the current epoch
+        total_batches = len(train_dataloader)
+        
+        # If resuming mid-epoch, set initial to the number of already processed batches
+        if epoch == start_epoch and offset > 0:
+            # Calculate how many batches have been processed in this epoch
+            # Assuming start_index represents the starting batch index
+            processed_batches = start_index // config["batch_size"]
+            initial = processed_batches
+            desc = f"Epoch {epoch + 1}/{num_epochs} (Resumed)"
+        else:
+            initial = 0
+            desc = f"Epoch {epoch + 1}/{num_epochs}"
 
         running_train_loss, running_train_tokens = 0.0, 0
 
-        with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
-            for batch in pbar:
+        with tqdm(train_dataloader, desc=desc, initial=initial, unit="batch", total=total_batches) as pbar:
+            for batch_idx, batch in enumerate(pbar, start=initial):
                 protein, protein_mask, rna_ids, rna_mask = (
                     batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
                     batch["protein_mask"].to(device), # mask shape like [B, prot_len]
@@ -208,17 +239,15 @@ def main():
                         checkpoint_filename = "best_" + checkpoint_filename
                         logging.info(f"Checkpointing best model with validation loss: {avg_val_loss:.6f}, at epoch {epoch + 1}, iteration {iteration}")
                     
-                    current_start_index = (iteration * config["batch_size"]) % len(train_dataset) # where next training batch will start
                     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
-                    checkpoint(model, optimizer, scheduler, epoch, iteration, current_start_index, checkpoint_path)
+                    checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
 
                 # Update progress bar with current loss 
                 num_valid_batch_tokens = (rna_tgt != tokenizer.pad_token_id).sum().item()
                 pbar.set_postfix(loss=f"{loss.item() / num_valid_batch_tokens:.6f}", refresh=True)
 
-        current_start_index = 0 # reset start index for next epoch
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
-        checkpoint(model, optimizer, scheduler, (epoch + 1), iteration, current_start_index, checkpoint_path)
+        checkpoint(model, optimizer, scheduler, (epoch + 1), iteration, checkpoint_path)
 
     end = time.time()
     print("Training complete!")

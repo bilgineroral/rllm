@@ -41,7 +41,6 @@ def checkpoint(model: RLLM,
                scheduler: torch.optim.lr_scheduler.LambdaLR,
                epoch: int,
                iteration: int, 
-               start_index: int,
                checkpoint_path: str,
             ) -> None:
     """
@@ -59,7 +58,6 @@ def checkpoint(model: RLLM,
     checkpoint = {
         "epoch": epoch,
         "iteration": iteration,
-        "start_index": start_index,
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "scheduler_state": scheduler.state_dict(),

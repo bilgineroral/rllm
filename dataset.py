@@ -39,15 +39,15 @@ class ProteinRNADataset(Dataset):
                     "gene_name": gene_name,
                     "rna_seq": rna_seq
                 })
+        
+        # Skip pairs based on given offset
+        self.pairs = self.pairs[self.offset:] # https://stackoverflow.com/a/67073875
 
     def __len__(self):
         return len(self.pairs)
 
-    def __getitem__(self, idx):
-        # Adjust the index by the offset to resume sampling from the dataloader from where it left off
-        # https://stackoverflow.com/a/67073875
-        _idx = (self.offset + idx) % len(self.pairs)
-        pair = self.pairs[_idx]
+    def __getitem__(self, idx):        
+        pair = self.pairs[idx]
         
         protein_file = os.path.join(self.protein_folder, f"{pair['gene_name']}.pt")
         protein_emb = torch.load(protein_file, map_location="cpu").squeeze(0)  # Shape: [prot_len, d_protein]
