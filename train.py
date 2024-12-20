@@ -16,7 +16,7 @@ from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 
 from model import RLLM
 from dataset import ProteinRNADataset, collate_fn
-from util import checkpoint, validate, load_config, plot
+from util import checkpoint, validate, load_config, plot, parse_data_file
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only=False.*")
 
@@ -124,8 +124,10 @@ def main():
         scheduler.load_state_dict(model_checkpoint["scheduler_state"])
 
     # Training loop
-    training_losses, train_perplexities = [], [] # list of train. losses and perplexity scores saved at a fixed interval of steps
-    validation_losses, validation_perplexities = [], [] # list of val. losses and perplexity scores saved at a fixed interval of steps
+    training_losses = parse_data_file(config["output_paths"]["train_losses_path"])
+    train_perplexities = parse_data_file(config["output_paths"]["train_perplexities_path"])
+    validation_losses = parse_data_file(config["output_paths"]["val_losses_path"])
+    validation_perplexities = parse_data_file(config["output_paths"]["val_perplexities_path"])
     train_losses_path, train_perplexities_path = config["output_paths"]["train_losses_path"], config["output_paths"]["train_perplexities_path"]
     val_losses_path, val_perplexities_path = config["output_paths"]["val_losses_path"], config["output_paths"]["val_perplexities_path"]
     

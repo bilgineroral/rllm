@@ -134,3 +134,23 @@ def load_config(config_path: str):
         config = yaml.safe_load(file)
 
     return config
+
+def parse_data_file(path: str):
+    """
+    Parse the data file (losses or perplexities) and return a list of tuples.
+
+    Args:
+        path (str): Path to the data file.
+
+    Returns:
+        list: A list of tuples where each tuple contains (value, iteration).
+    """
+
+    data = []
+    if os.path.exists(path):    
+        with open(path, "r") as file:
+            for line in file:
+                iteration, value = line.strip().split(",")
+                data.append((float(value), int(iteration)))
+
+    return data
