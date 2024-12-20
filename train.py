@@ -24,6 +24,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train or resume a model for RNA-Protein interaction.")
     parser.add_argument('--resume', type=str, default=None, help="Path to model checkpoint to resume training")
     parser.add_argument('--config', type=str, default="./config/config.yaml", help="Path to config file")
+    parser.add_argument('--device', type=str, default="cuda", help="Device to use for training (cuda or cpu)")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -35,7 +36,7 @@ def main():
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(plots_dir, exist_ok=True)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device if args.device else 'cuda' if torch.cuda.is_available() else 'cpu')
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config["tokenizer_path"])
@@ -46,7 +47,7 @@ def main():
         config["num_heads"], config["rllm_dropout"],
         config["gpt_dropout"], config["gpt_weights_path"], 
         vocab_size
-    ).to(device)
+    )
 
     params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -106,6 +107,9 @@ def main():
         pin_memory=True
     )
     
+    model = torch.compile(model)
+    model.to(device)
+
     num_epochs = config["num_epochs"]
     total_steps = len(train_dataloader) * num_epochs
     warmup_steps = int(config["warmup_ratio"] * total_steps) # learning rate warmup steps
