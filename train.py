@@ -106,7 +106,8 @@ def main():
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
         pin_memory=True
     )
-    
+
+    torch.set_float32_matmul_precision('high')
     model = torch.compile(model)
     model.to(device)
 
