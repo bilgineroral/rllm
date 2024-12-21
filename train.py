@@ -209,7 +209,9 @@ def main():
                     plot(validation_perplexities, os.path.join(plots_dir, f"val_perplexity_epoch_{epoch}_iter_{iteration}.png"))
 
                     checkpoint_filename = f"checkpoint_epoch_{epoch}_iter_{iteration}.pt"
-
+                    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
+                    checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
+                    
                     if early_stopping and avg_val_loss >= best_val_loss:
                         val_loss_not_improved += 1
                         if val_loss_not_improved >= patience:
@@ -219,9 +221,6 @@ def main():
                         val_loss_not_improved = 0
                         checkpoint_filename = "best_" + checkpoint_filename
                         logging.info(f"Checkpointing best model with validation loss: {avg_val_loss:.6f}, at epoch {epoch + 1}, iteration {iteration}")
-                    
-                    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
-                    checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
 
                     # Iterate through each parameter group and log its name and learning rate
                     for group in optimizer.param_groups:
@@ -233,11 +232,11 @@ def main():
                 num_valid_batch_tokens = (rna_tgt != tokenizer.pad_token_id).sum().item()
                 pbar.set_postfix(loss=f"{loss.item() / num_valid_batch_tokens:.6f}", refresh=True)
 
-        if early_stopping and val_loss_not_improved >= patience:
-            break
-
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
         checkpoint(model, optimizer, scheduler, (epoch + 1), iteration, checkpoint_path)
+
+        if early_stopping and val_loss_not_improved >= patience:
+            break
 
     end = time.time()
     if early_stopping and val_loss_not_improved >= patience:
