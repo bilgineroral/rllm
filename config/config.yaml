@@ -11,9 +11,9 @@ gpt_weights_path: "./GenerRNA/checkpoint.pt"
 
 # Training Configuration
 batch_size: 32
-num_epochs: 5
-rllm_learning_rate: 1.0e-3
-gpt_learning_rate: 1.0e-4
+num_epochs: 10
+rllm_learning_rate: 6.0e-4
+gpt_learning_rate: 5.0e-5
 checkpoint_interval: 4000  # Validate and save model every n iterations
 plot_interval: 200        # Plot every n iterations
 early_stopping: True
