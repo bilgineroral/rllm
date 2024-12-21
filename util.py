@@ -150,7 +150,7 @@ def parse_data_file(path: str):
     if os.path.exists(path):    
         with open(path, "r") as file:
             for line in file:
-                iteration, value = line.strip().split(",")
+                value, iteration = eval(line)
                 data.append((float(value), int(iteration)))
 
     return data
