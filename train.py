@@ -59,7 +59,12 @@ def main():
     if args.resume:
         print(f"Resuming training from checkpoint: {args.resume}")
         model_checkpoint = torch.load(args.resume, map_location=device)
-        model.load_state_dict(model_checkpoint["model_state"])
+        model_state_dict = model_checkpoint["model_state"]
+
+        # pytorch compiled model state dict keys have "_orig_mod." prefix so we have to remove them
+        for key in list(model_state_dict.keys()):
+            model_state_dict[key.replace("_orig_mod.", "")] = model_state_dict.pop(key)
+        model.load_state_dict(model_state_dict)
 
         start_epoch = model_checkpoint["epoch"]
         iteration = model_checkpoint["iteration"]
@@ -98,7 +103,7 @@ def main():
     )
 
     torch.set_float32_matmul_precision('high')
-    model = torch.compile(model)
+    model = torch.compile(model) 
     model.to(device)
 
     num_epochs = config["num_epochs"]
