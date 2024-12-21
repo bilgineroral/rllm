@@ -85,7 +85,8 @@ def main():
         num_workers=config["num_workers_train"],
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
         pin_memory=True,
-        shuffle=True
+        shuffle=True,
+        drop_last=True
     )
 
     val_dataset = ProteinRNADataset(
@@ -99,7 +100,8 @@ def main():
         num_workers=config["num_workers_val"],
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
         pin_memory=True,
-        shuffle=False
+        shuffle=False,
+        drop_last=True
     )
 
     torch.set_float32_matmul_precision('high')
@@ -211,7 +213,6 @@ def main():
                     if early_stopping and avg_val_loss >= best_val_loss:
                         val_loss_not_improved += 1
                         if val_loss_not_improved >= patience:
-                            logging.info(f"Validation loss not improved for {patience} epochs. Early stopping triggered!")
                             break
                     if avg_val_loss < best_val_loss: # improvement in validation loss
                         best_val_loss = avg_val_loss
@@ -222,15 +223,27 @@ def main():
                     checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
                     checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
 
+                    # Iterate through each parameter group and log its name and learning rate
+                    for group in optimizer.param_groups:
+                        name = group.get('name', 'unnamed') 
+                        lr = group['lr']
+                        logging.info(f"Learning rate for {name}: {lr}")
+
                 # Update progress bar with current loss 
                 num_valid_batch_tokens = (rna_tgt != tokenizer.pad_token_id).sum().item()
                 pbar.set_postfix(loss=f"{loss.item() / num_valid_batch_tokens:.6f}", refresh=True)
+
+        if early_stopping and val_loss_not_improved >= patience:
+            break
 
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
         checkpoint(model, optimizer, scheduler, (epoch + 1), iteration, checkpoint_path)
 
     end = time.time()
-    print("Training complete!")
+    if early_stopping and val_loss_not_improved >= patience:
+        print(f"Early stopping triggered! Training stopped at epoch {epoch + 1}")
+    else:
+        print("Training complete!")
     print(f"Total training time: {end - start:.2f} seconds")
 
 if __name__ == "__main__":
