@@ -7,22 +7,19 @@ from transformers import AutoTokenizer
 class ProteinRNADataset(Dataset):
     def __init__(self, pairs_file: str, 
                  protein_folder: str, 
-                 tokenizer: AutoTokenizer = None,
-                 offset: int = 0):
+                 tokenizer: AutoTokenizer = None):
         """
         Args:
             pairs_file: Path to 'train.txt'
             protein_folder: Path to protein embeddings
             rna_folder: Path to RNA embeddings
             tokenizer: Function that tokenizes RNA sequences into indices
-            offset: Number of pairs to skip, useful for resuming sampling from the dataloader
         """
         if tokenizer is None:
             tokenizer = AutoTokenizer.from_pretrained("./tokenizer")
 
         self.protein_folder = protein_folder
         self.tokenizer = tokenizer
-        self.offset = offset
 
         # assuming pairs file has the following format:
         # >{gene_name}
@@ -39,9 +36,6 @@ class ProteinRNADataset(Dataset):
                     "gene_name": gene_name,
                     "rna_seq": rna_seq
                 })
-        
-        # Skip pairs based on given offset
-        self.pairs = self.pairs[self.offset:] # https://stackoverflow.com/a/67073875
 
     def __len__(self):
         return len(self.pairs)

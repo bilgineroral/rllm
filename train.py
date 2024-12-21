@@ -1,5 +1,4 @@
 import os
-import gc
 from functools import partial
 from tqdm import tqdm
 import logging
@@ -64,34 +63,24 @@ def main():
 
         start_epoch = model_checkpoint["epoch"]
         iteration = model_checkpoint["iteration"]
-
-        # Calculate start_index dynamically
-        train_len = len(ProteinRNADataset(
-            config["data_paths"]["pairs_train_path"],
-            config["data_paths"]["protein_data_path"],
-            tokenizer=tokenizer
-        )) # total number of training samples
-        gc.collect()
-
-        start_index = (iteration * config["batch_size"]) % train_len
         
-        print(f"Resuming training at epoch: {start_epoch} | iteration: {iteration} | start_index: {start_index}")
+        print(f"Resuming training at epoch: {start_epoch} | iteration: {iteration}")
     else:
         start_epoch, iteration = 0, 0
-        start_index = 0
 
     # DataLoader for Train and Validation
     train_dataset = ProteinRNADataset(
         config["data_paths"]["pairs_train_path"],
         config["data_paths"]["protein_data_path"],
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
     )
     train_dataloader = DataLoader(
         train_dataset, 
         batch_size=config["batch_size"], 
         num_workers=config["num_workers_train"],
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
-        pin_memory=True
+        pin_memory=True,
+        shuffle=True
     )
 
     val_dataset = ProteinRNADataset(
@@ -104,7 +93,8 @@ def main():
         batch_size=config["batch_size"], 
         num_workers=config["num_workers_val"],
         collate_fn=partial(collate_fn, tokenizer=tokenizer),
-        pin_memory=True
+        pin_memory=True,
+        shuffle=False
     )
 
     torch.set_float32_matmul_precision('high')
@@ -116,8 +106,8 @@ def main():
     warmup_steps = int(config["warmup_ratio"] * total_steps) # learning rate warmup steps
 
     optimizer = optim.AdamW([
-        {'params': model.get_trainable_parameters(cross_attn=True), 'lr': config["rllm_learning_rate"]},  # Cross-attention blocks
-        {'params': model.get_trainable_parameters(gpt=True), 'lr': config["gpt_learning_rate"]},  # Trainable GPT layers
+        {'params': model.get_trainable_parameters(cross_attn=True), 'lr': config["rllm_learning_rate"], 'name': 'cross_attn'},  # Cross-attention blocks
+        {'params': model.get_trainable_parameters(gpt=True), 'lr': config["gpt_learning_rate"], 'name': 'gpt'},  # Trainable GPT layers
     ], weight_decay=config["optimizer_weight_decay"])
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
@@ -148,40 +138,11 @@ def main():
     model.train()
 
     for epoch in range(start_epoch, num_epochs):
-        offset = start_index if epoch == start_epoch else 0
-
-        train_dataset = ProteinRNADataset(
-            config["data_paths"]["pairs_train_path"],
-            config["data_paths"]["protein_data_path"],
-            tokenizer=tokenizer,
-            offset=offset
-        )
-        train_dataloader = DataLoader(
-            train_dataset, 
-            batch_size=config["batch_size"], 
-            num_workers=config["num_workers_train"],
-            collate_fn=partial(collate_fn, tokenizer=tokenizer),
-            pin_memory=True
-        )
-
-        # Calculate total batches for the current epoch
-        total_batches = len(train_dataloader)
-        
-        # If resuming mid-epoch, set initial to the number of already processed batches
-        if epoch == start_epoch and offset > 0:
-            # Calculate how many batches have been processed in this epoch
-            # Assuming start_index represents the starting batch index
-            processed_batches = start_index // config["batch_size"]
-            initial = processed_batches
-            desc = f"Epoch {epoch + 1}/{num_epochs} (Resumed)"
-        else:
-            initial = 0
-            desc = f"Epoch {epoch + 1}/{num_epochs}"
 
         running_train_loss, running_train_tokens = 0.0, 0
 
-        with tqdm(train_dataloader, desc=desc, initial=initial, unit="batch", total=total_batches) as pbar:
-            for batch_idx, batch in enumerate(pbar, start=initial):
+        with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch", total=len(train_dataloader)) as pbar:
+            for batch_idx, batch in enumerate(pbar):
                 protein, protein_mask, rna_ids, rna_mask = (
                     batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
                     batch["protein_mask"].to(device), # mask shape like [B, prot_len]
