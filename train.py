@@ -135,7 +135,7 @@ def main():
     early_stopping = config["early_stopping"]
     patience = config["early_stopping_patience"]  # Number of epochs with no improvement to wait
 
-    best_val_loss = float('inf')
+    best_val_loss = float("inf") if not args.resume else min([loss for loss, _ in validation_losses])
     val_loss_not_improved = 0
 
     checkpoint_interval = config["checkpoint_interval"]
