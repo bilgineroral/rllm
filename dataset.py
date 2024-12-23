@@ -122,6 +122,7 @@ class ProteinRNALengthDataset(Dataset):
         
         protein_file = os.path.join(self.protein_folder, f"{pair['gene_name']}.pt")
         protein_emb = torch.load(protein_file, map_location="cpu").squeeze(0)  # Shape: [prot_len, d_protein]
+        protein_emb = protein_emb[1:-1, :]  # remove BOS and EOS tokens
 
         return {
             "protein": protein_emb, # embedding shape like [prot_len, d_protein]

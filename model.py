@@ -1,133 +1,46 @@
 import torch
 import torch.nn as nn
 import fm
-from typing import Callable
 
-class AttentionPool(nn.Module):
-    """
-    Attention pooling, adapted from AttentionPool2d:
-    https://benjaminwarner.dev/2022/07/14/tinkering-with-attention-pooling
-
-    Input shape: [B, T, d_model]
-      B: batch size
-      T: sequence length
-      d_model: embedding dimension
-    """
-    def __init__(self,
-        d_model:int,
-        bias:bool=True,
-        norm:Callable[[int], nn.Module]=nn.LayerNorm
-    ):
+class AttentionPooling(nn.Module):
+    def __init__(self, d_model: int = 1152):
         super().__init__()
-
-        self.norm = norm(d_model)
-        self.q = nn.Linear(d_model, d_model, bias=bias)
-        self.vk = nn.Linear(d_model, d_model * 2, bias=bias)
-        self.proj = nn.Linear(d_model, d_model)
-
-    def forward(self, x: torch.Tensor, cls_q: torch.Tensor, mask: torch.Tensor = None):
-        """
-        x: [B, T, d_model]
-        cls_q: [1, d_model] (the trainable class query vector)
-        mask: [B, T] (boolean mask; True for valid positions, False for padding)
-        """
-        x = self.norm(x)  # [B, T, d_model]
-        B, T, C = x.shape
-
-        q = self.q(cls_q.expand(B, -1, -1))  # [B, 1, d_model]
-        k, v = self.vk(x).reshape(B, T, 2, C).permute(2, 0, 1, 3).chunk(2, dim=0)
-        k, v = k.squeeze(0), v.squeeze(0)  # [B, T, C], [B, T, C]
-
-        # attn scores
-        attn = torch.matmul(q, k.transpose(-2, -1))  # [B, 1, T]
-
-        if mask is not None:
-            attn = attn.masked_fill(~mask.unsqueeze(1), float("-inf"))
-
-        attn = attn.softmax(dim=-1)
-        x = torch.matmul(attn, v).reshape(B, C)  # [B, C]
-
-        return self.proj(x)
-
-
-class LearnedAggregationSandwich(nn.Module):
-    """
-    Adaptation of Learned Aggregation, referencing the style:
-    https://arxiv.org/abs/2112.13692
-    Adapted from:
-    https://benjaminwarner.dev/2022/07/14/tinkering-with-attention-pooling
-    
-    Input shape: [B, T, d_model]
-    Output shape: [B, d_model] (one “attention-pooled” representation)
-    """
-    def __init__(self,
-        ni:int,
-        attn_bias:bool=True,
-        ffn_expand:int|float=3,
-        norm:Callable[[int], nn.Module]=nn.LayerNorm,
-        act_cls:Callable[[None], nn.Module]=nn.GELU,
-    ):
-        super().__init__()
-        
-        # Two learnable scaling parameters
-        self.gamma_1 = nn.Parameter(1e-4 * torch.ones(ni))
-        self.gamma_2 = nn.Parameter(1e-4 * torch.ones(ni))
-        
-        self.cls_q = nn.Parameter(torch.zeros([1, ni]))
-        
-        self.attn = AttentionPool(ni, bias=attn_bias, norm=norm)
-        
-        self.norm1 = norm(ni)
-        self.norm2 = norm(ni)
-        
-        # Feed-forward “sandwich”
-        self.ffn = nn.Sequential(
-            nn.Linear(ni, int(ni*ffn_expand)),
-            act_cls(),
-            norm(int(ni*ffn_expand)),
-            nn.Linear(int(ni*ffn_expand), ni)
-        )
-        
-        # Initialize cls_q
-        nn.init.trunc_normal_(self.cls_q, std=0.02)
-        # Initialize linear layers, etc.
-        self.apply(self._init_weights)
+        self.attention_weights = nn.Linear(d_model, 1)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
         """
-        x: [B, T, d_model]
-        Returns: [B, d_model], the “pooled” representation.
+        x: [B, seq_len, d_model] - Input sequence embeddings
+        mask: [B, seq_len] - Boolean mask (True for padding tokens, False otherwise)
         """
-        # 1) Attention pooling
-        #    a) We do an attention-based pooling with cls_q
-        #    b) Then add them together with the residual scaling gamma_1
-        attn_out = self.attn(x, self.cls_q, mask)  # [B, d_model]
-        x = self.cls_q + self.gamma_1 * self.norm1(attn_out)  # [B, d_model] broadcast-add
+        # Compute attention scores: [B, seq_len, 1]
+        scores = self.attention_weights(x)  # Raw scores
 
-        # 2) Feed-forward
-        #    (cls_q plus output from feed-forward with residual scaling gamma_2)
-        x = x + self.gamma_2 * self.ffn(self.norm2(x))
-        return x  # [B, d_model]
+        # Apply mask: Assign large negative values to padding positions
+        mask = mask.unsqueeze(-1)  # [B, seq_len, 1]
+        scores = scores.masked_fill(mask, float("-inf"))  # Set scores of padding tokens to -inf
 
-    @torch.no_grad()
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.trunc_normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
+        # Compute normalized weights: [B, seq_len, 1]
+        weights = torch.softmax(scores, dim=1)
 
+        # Compute weighted sum of inputs: [B, d_model]
+        output = (x * weights).sum(dim=1)
+        return output
+    
 
 class LengthPredictionHead(nn.Module):
     def __init__(self, d_model: int = 1152, 
                  num_classes: int = 50, 
-                 ffn_expand: int|float = 3,
                  dropout: float = 0.0):
         super(LengthPredictionHead, self).__init__()
-        self.pooler = LearnedAggregationSandwich(
-            ni=d_model, ffn_expand=ffn_expand, norm=nn.LayerNorm
-        )
+        self.attn_pool = AttentionPooling(d_model)
 
-        self.classifier = nn.Linear(d_model, num_classes)
+        self.ffn = nn.ModuleList([
+            nn.Linear(d_model, 3*d_model),
+            nn.ReLU(),
+            nn.Linear(3*d_model, d_model)
+        ])
+        self.classifier = nn.Linear(2*d_model, num_classes)
+        self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
@@ -138,10 +51,17 @@ class LengthPredictionHead(nn.Module):
             logits: Output of shape [B, num_classes]
         """
         # Pooling with Learned Aggregation
-        x = self.pooler(x, mask)  # -> [B, d_model]
+        avg_pool = x.mean(dim=1)  # Average pooling
+        x = self.attn_pool(x, mask)  # -> [B, d_model]
+        x = self.layer_norm(x)
         x = self.dropout(x)
-        
+
+        for layer in self.ffn:
+            x = layer(x)
+        x = self.dropout(x)
+
         # Classification layer
+        x = torch.cat([x, avg_pool], dim=-1)  # Concatenate with average pooling
         logits = self.classifier(x)  # -> [B, num_classes]
         return logits
 

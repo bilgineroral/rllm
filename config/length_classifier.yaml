@@ -8,12 +8,13 @@ dropout: 0.2
 batch_size: 128
 num_epochs: 100
 learning_rate: 1.0e-3
-checkpoint_interval: 16000  # Validate and save model every n iterations
-plot_interval: 4000        # Plot every n iterations
+checkpoint_interval: 8000  # Validate and save model every n iterations
+validation_interval: 4000   # Validate every n iterations
+plot_interval: 400        # Plot every n iterations
 early_stopping: True
 early_stopping_patience: 8 # counted every checkpoint_interval
-num_workers_train: 2          # Number of workers for data loader
-num_workers_val: 2          # Number of workers for data loader
+num_workers_train: 12          # Number of workers for data loader
+num_workers_val: 6          # Number of workers for data loader
 
 optimizer_weight_decay: 0.01
 
