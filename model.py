@@ -34,12 +34,22 @@ class LengthPredictionHead(nn.Module):
         super(LengthPredictionHead, self).__init__()
         self.attn_pool = AttentionPooling(d_model)
 
-        self.ffn = nn.ModuleList([
-            nn.Linear(d_model, 3*d_model),
-            nn.ReLU(),
-            nn.Linear(3*d_model, d_model)
-        ])
-        self.classifier = nn.Linear(2*d_model, num_classes)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, 4*d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.BatchNorm1d(4*d_model),
+            nn.Linear(4*d_model, 2*d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.BatchNorm1d(2*d_model),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(4*d_model, d_model),  # 4*d_model because of concatenation
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, num_classes)
+        )
         self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
@@ -51,19 +61,13 @@ class LengthPredictionHead(nn.Module):
             logits: Output of shape [B, num_classes]
         """
         # Pooling with Learned Aggregation
-        avg_pool = x.mean(dim=1)  # Average pooling
-        x = self.attn_pool(x, mask)  # -> [B, d_model]
-        x = self.layer_norm(x)
-        x = self.dropout(x)
-
-        for layer in self.ffn:
-            x = layer(x)
-        x = self.dropout(x)
-
-        # Classification layer
-        x = torch.cat([x, avg_pool], dim=-1)  # Concatenate with average pooling
-        logits = self.classifier(x)  # -> [B, num_classes]
-        return logits
+        avg_pool = x.mean(dim=1)  # [B, d_model]
+        max_pool, _ = x.max(dim=1) # [B, d_model]
+        attn_pool = self.attn_pool(x, mask) # [B, d_model]
+        
+        x = self.ffn(attn_pool) # [B, 2*d_model]
+        x = torch.cat([x, avg_pool, max_pool], dim=-1) # [B, 4*d_model]
+        return self.classifier(x)
 
 
 class CrossAttentionBlock(nn.Module):
@@ -133,7 +137,7 @@ class RLLM(nn.Module):
         num_layers = len(self.rnafm.layers) # number of RNA-FM layers
         self.cross_attention_blocks = nn.ModuleList([
             CrossAttentionBlock(d_protein, d_model, num_heads, rllm_dropout)
-            for _ in range(num_layers - 1) # very last layer is in between the final two RNA-FM layers
+            for _ in range(num_layers) # cross-attention block after each RNA-FM layer
         ])
         self.layer_norm_blocks = nn.ModuleList([
             nn.LayerNorm(d_model)

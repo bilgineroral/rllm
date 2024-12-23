@@ -6,7 +6,7 @@ dropout: 0.2
 
 # Training Configuration
 batch_size: 128
-num_epochs: 100
+num_epochs: 10
 learning_rate: 1.0e-3
 checkpoint_interval: 8000  # Validate and save model every n iterations
 validation_interval: 4000   # Validate every n iterations

@@ -12,15 +12,27 @@ import warnings
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
-from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 
-from model import RLLM
 from dataset import ProteinRNALengthDataset, collate_fn_length
 from util import checkpoint, validate, load_config, plot, parse_data_file
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only=False.*")
+
+class FocalLoss(nn.Module):
+    def __init__(self, weight=None, gamma=2.0):
+        super().__init__()
+        self.gamma = gamma
+        self.weight = weight
+
+    def forward(self, input, target):
+        ce_loss = F.cross_entropy(input, target, reduction='none', weight=self.weight)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
+        return focal_loss
+
 
 def main():
     parser = argparse.ArgumentParser(description="Train or resume a model for RNA-Protein interaction.")
@@ -55,8 +67,7 @@ def main():
     num_sequences = [cluster[2] for cluster in RNA_LENGTH_CLUSTERS]
     total_sequences = sum(num_sequences)
     weights = [total_sequences / n for n in num_sequences]
-    normalized_weights = [w / sum(weights) for w in weights]
-    criterion = nn.CrossEntropyLoss(weight=torch.tensor(normalized_weights, dtype=torch.float32, device=device))
+    criterion = FocalLoss(weight=torch.tensor(weights, dtype=torch.float32, device=device))
 
     if args.resume:
         print(f"Resuming training from checkpoint: {args.resume}")
@@ -113,9 +124,16 @@ def main():
     optimizer = optim.AdamW(
         model.parameters(), lr=config["learning_rate"], weight_decay=config["optimizer_weight_decay"]
     )
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    """ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=config["scheduler"]["factor"], patience=config["scheduler"]["patience"],
         threshold=config["scheduler"]["threshold"], threshold_mode='abs', min_lr=config["scheduler"]["min_lr"]
+    ) """
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=config["learning_rate"],
+        steps_per_epoch=len(train_dataloader),
+        epochs=num_epochs,
+        pct_start=0.3  # Spend 30% of training warming up
     )
 
     if args.resume:
@@ -159,6 +177,7 @@ def main():
 
                 loss.backward()
                 optimizer.step()
+                scheduler.step()
 
                 iteration += 1
 
@@ -212,8 +231,6 @@ def main():
 
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
         checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
-
-        scheduler.step(avg_val_loss)
 
         if early_stopping and val_loss_not_improved >= patience:
             break
