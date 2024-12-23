@@ -82,42 +82,26 @@ def validate(model: RLLM,
         float: Perplexity score.
     """
     assert type(criterion) == torch.nn.CrossEntropyLoss, "Criterion must be CrossEntropyLoss"
-    assert criterion.reduction == "sum", "Criterion must have reduction='sum' for validation"
 
     model.eval()
     total_loss = 0.0
-    total_tokens = 0
-
-    pad_token_id = criterion.ignore_index
 
     with torch.no_grad():
         for batch in dataloader:
-            protein, protein_mask, rna_ids, rna_mask = (
+            protein, protein_mask, labels = (
                 batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
                 batch["protein_mask"].to(device), # mask shape like [B, prot_len]
-                batch["rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
-                batch["rna_mask"].to(device) # mask shape like [B, rna_len]
+                batch["labels"].to(device), # shape like [B]
             )
 
-            rna_src = rna_ids[:, :-1] # remove last token for source
-            rna_mask = rna_mask[:, :-1]
-            rna_tgt = rna_ids[:, 1:]
-
-            logits = model(protein, rna_src, protein_mask, rna_mask)
-            logits = logits.reshape(-1, logits.shape[-1])
-            rna_tgt = rna_tgt.reshape(-1)
-
-            loss = criterion(logits, rna_tgt)
+            logits = model(protein, protein_mask) # shape like [B, num_classes]
+            loss = criterion(logits, labels)
             total_loss += loss.item()
 
-            valid_tokens = (rna_tgt != pad_token_id).sum().item() # increase by the number of valid (non-padding) tokens
-            total_tokens += valid_tokens
-
-    avg_loss = total_loss / total_tokens if total_tokens > 0 else 0.0
-    perplexity = torch.exp(torch.tensor(avg_loss)).item()
+    avg_loss = total_loss / len(dataloader)
 
     model.train()
-    return avg_loss, perplexity
+    return avg_loss
 
 
 def load_config(config_path: str):

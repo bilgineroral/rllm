@@ -1,7 +1,7 @@
 # Model config
 d_protein: 1152
-d_model: 1024
-num_heads: 8 # Number of attention heads in cross attention blocks
+d_model: 640
+num_heads: 20 # Number of attention heads in cross attention blocks
 
 rllm_dropout: 0.2
 gpt_dropout: 0.1

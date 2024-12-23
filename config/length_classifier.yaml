@@ -1,0 +1,39 @@
+# Model config
+d_model: 1152
+ffn_expand: 3
+
+dropout: 0.2
+
+# Training Configuration
+batch_size: 128
+num_epochs: 100
+learning_rate: 1.0e-3
+checkpoint_interval: 16000  # Validate and save model every n iterations
+plot_interval: 4000        # Plot every n iterations
+early_stopping: True
+early_stopping_patience: 8 # counted every checkpoint_interval
+num_workers_train: 2          # Number of workers for data loader
+num_workers_val: 2          # Number of workers for data loader
+
+optimizer_weight_decay: 0.01
+
+scheduler:
+  factor: 0.1
+  patience: 5
+  threshold: 1.0e-4
+  min_lr: 1.0e-6
+
+# Data Paths
+data_paths:
+  protein_data_path: "./dataset/protein" # path to protein embeddings folder
+  pairs_train_path: "./dataset/train.txt"
+  pairs_val_path: "./dataset/val.txt"
+  pairs_test_path: "./dataset/test.txt"
+
+# Directories
+output_paths:
+  checkpoint_dir: "./checkpoints"
+  plots_dir: "./plots"
+  train_losses_path: "./train_losses.txt"
+  val_losses_path: "./val_losses.txt"
+  log_path: "./train.log"
