@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
-from transformers import AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import get_linear_schedule_with_warmup
 
 from model import RLLM
 from dataset import ProteinRNADataset, collate_fn
@@ -36,8 +36,6 @@ def main():
     os.makedirs(plots_dir, exist_ok=True)
 
     device = torch.device(args.device if args.device else 'cuda' if torch.cuda.is_available() else 'cpu')
-
-    
 
     model = RLLM(
         d_protein=config["d_protein"], d_model=config["d_model"], 
@@ -165,13 +163,15 @@ def main():
                 optimizer.zero_grad()
 
                 # masked is a boolean tensor with the same shape as masked_rna, where True indicates a masked token
-                tokens_mask = torch.zeros_like(masked_rna, dtype=torch.bool) # shape like [B, rna_len]
+                tokens_mask = torch.zeros(
+                    masked_rna.size(0), masked_rna.size(1), 
+                    device=masked_rna.device, dtype=torch.bool
+                ) # shape like [B, rna_len]
                 tokens_mask.scatter_(1, mask_indices, True) # shape like [B, rna_len], True at masked indices
 
                 logits = model(protein, masked_rna, protein_padding_mask, rna_padding_mask, masked_tokens=tokens_mask)
                 logits = logits.reshape(-1, vocab_size)
-                gt_tokens = [t for tokens in gt_tokens for t in tokens]
-                gt_tokens = [alphabet.get_idx(t) for t in gt_tokens]
+                gt_tokens = [alphabet.get_idx(t) for tokens in gt_tokens for t in tokens]
                 gt_tokens = torch.tensor(gt_tokens, device=device, dtype=torch.long)
 
                 loss = criterion(logits, gt_tokens)
@@ -182,7 +182,7 @@ def main():
 
                 iteration += 1
 
-                valid_tokens = gt_tokens.shape.numel()
+                valid_tokens = gt_tokens.size(0)
                 
                 running_train_loss += loss.item()
                 running_train_tokens += valid_tokens

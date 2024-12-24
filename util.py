@@ -1,12 +1,13 @@
 import os
 import yaml
+import math
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
 
-from model import RLLM
+from model import RLLM, LengthPredictionHead
 
 def plot(data: list, save_path: str, step: int = 1) -> None:
     """
@@ -67,6 +68,65 @@ def checkpoint(model: RLLM,
 
 
 def validate(model: RLLM, 
+             dataloader: torch.utils.data.DataLoader, 
+             criterion: torch.nn.Module,
+             device: torch.device
+            ) -> float:
+    """
+    Validates the model on the validation set or a subset of it.
+    
+    Args:
+        model (torch.nn.Module): The model to validate.
+        dataloader (torch.utils.data.DataLoader): The validation DataLoader.
+        criterion (torch.nn.Module): Loss function (e.g., CrossEntropyLoss).
+
+    Returns:
+        float: Validation loss.
+        float: Perplexity score.
+    """
+    assert type(criterion) == torch.nn.CrossEntropyLoss, "Only CrossEntropyLoss is supported for now."
+    assert criterion.reduction == "sum", "Reduction should be 'sum' for validation."
+
+    model.eval()
+    vocab_size = len(model.alphabet.all_toks)
+
+    total_loss = 0.0
+    total_tokens = 0
+
+    with torch.no_grad():
+        for batch in dataloader:
+            protein, protein_padding_mask, masked_rna, mask_indices, gt_tokens, rna_padding_mask = (
+                batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
+                batch["protein_padding_mask"].to(device), # mask shape like [B, prot_len]
+                batch["masked_rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
+                batch["mask_indices"].to(device), # mask shape like [B, rna_len]
+                batch["ground_truth_tokens"], # ground truth tokens -- list (size: B) of lists
+                batch["rna_padding_mask"].to(device) # mask shape like [B, rna_len]
+            )
+
+            tokens_mask = torch.zeros(
+                masked_rna.size(0), masked_rna.size(1), 
+                device=masked_rna.device, dtype=torch.bool
+            ) # shape like [B, rna_len]
+            tokens_mask.scatter_(1, mask_indices, True) # shape like [B, rna_len], True at masked indices
+
+            logits = model(protein, masked_rna, protein_padding_mask, rna_padding_mask, masked_tokens=tokens_mask)
+            logits = logits.reshape(-1, vocab_size)
+            gt_tokens = [model.alphabet.get_idx(t) for tokens in gt_tokens for t in tokens]
+            gt_tokens = torch.tensor(gt_tokens, device=device, dtype=torch.long)
+
+            loss = criterion(logits, gt_tokens)
+
+            total_loss += loss.item()
+            total_tokens += gt_tokens.size(0)
+
+    avg_loss = total_loss / total_tokens
+
+    model.train()
+    return avg_loss, math.exp(avg_loss)
+
+
+def validate_ln(model: LengthPredictionHead, 
              dataloader: torch.utils.data.DataLoader, 
              criterion: torch.nn.Module,
              device: torch.device

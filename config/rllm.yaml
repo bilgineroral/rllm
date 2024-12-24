@@ -1,7 +1,7 @@
 # Model config
 d_protein: 1152
 d_model: 640
-num_heads: 20 # Number of attention heads in cross attention blocks
+num_heads: 8 # Number of attention heads in cross attention blocks
 
 rllm_dropout: 0.2
 rnafm_dropout: 0.1
