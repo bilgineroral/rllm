@@ -85,6 +85,7 @@ class CrossAttentionBlock(nn.Module):
         self.protein_proj = nn.Linear(d_protein, d_model)
         self.rna_proj = nn.Linear(d_model, d_model)
         self.cross_attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True, dropout=dropout)
+        self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self,
@@ -99,7 +100,7 @@ class CrossAttentionBlock(nn.Module):
         rna_mask: [B, rna_len]
         """
         # Project protein and RNA embeddings to a common dimension        
-        rna = self.layer_norm(rna) # apply layer norm here because GPT layers don't apply layer norm at the end, but at the begining
+        rna = self.layer_norm(rna) # Layer norm before projection
         rna_proj = self.dropout(self.rna_proj(rna))              # [B, rna_len, d_model]
         protein_proj = self.dropout(self.protein_proj(protein))  # [B, prot_len, d_model]
 

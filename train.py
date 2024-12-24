@@ -159,7 +159,7 @@ def main():
                     batch["protein_padding_mask"].to(device), # mask shape like [B, prot_len]
                     batch["masked_rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
                     batch["mask_indices"].to(device), # mask shape like [B, rna_len]
-                    batch["ground_truth_tokens"].to(device), # ground truth tokens shape like [B, rna_len]
+                    batch["ground_truth_tokens"], # ground truth tokens -- list (size: B) of lists
                     batch["rna_padding_mask"].to(device) # mask shape like [B, rna_len]
                 )
                 optimizer.zero_grad()
