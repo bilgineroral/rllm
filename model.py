@@ -52,8 +52,8 @@ class CrossAttentionBlock(nn.Module):
 
 
 class RLLM(nn.Module):
-    def __init__(self, d_protein: int = 1536, 
-                 d_model: int = 768, num_heads: int = 8,
+    def __init__(self, d_protein: int = 1152, 
+                 d_model: int = 1024, num_heads: int = 8,
                  rllm_dropout: float = 0.0,
                  gpt_dropout: float = 0.0,
                  gpt_checkpoint_path: str = "./GenerRNA/checkpoint.pt",
