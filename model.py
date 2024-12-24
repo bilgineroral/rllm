@@ -33,8 +33,10 @@ class CrossAttentionBlock(nn.Module):
         """
         # Project protein and RNA embeddings to a common dimension        
         rna = self.layer_norm(rna) # apply layer norm here because GPT layers don't apply layer norm at the end, but at the begining
-        rna_proj = self.dropout(self.rna_proj(rna))              # [B, rna_len, d_model]
-        protein_proj = self.dropout(self.protein_proj(protein))  # [B, prot_len, d_model]
+        # rna_proj = self.dropout(self.rna_proj(rna))              # [B, rna_len, d_model]
+        # protein_proj = self.dropout(self.protein_proj(protein))  # [B, prot_len, d_model]
+        rna_proj = self.rna_proj(rna)              # [B, rna_len, d_model]
+        protein_proj = self.protein_proj(protein)
 
         # Cross Attention: RNA queries protein
         attn_output, _ = self.cross_attention(
@@ -44,9 +46,9 @@ class CrossAttentionBlock(nn.Module):
 
         # Mask out padded RNA positions
         # TODO: This might be unnecessary, but doesn't harm either
-        if rna_mask is not None:
-            rna_mask = rna_mask.unsqueeze(-1).expand(attn_output.shape)  # [B, rna_len, d_model]
-            attn_output = attn_output.masked_fill(rna_mask, 0.0)
+        # if rna_mask is not None:
+        #     rna_mask = rna_mask.unsqueeze(-1).expand(attn_output.shape)  # [B, rna_len, d_model]
+        #     attn_output = attn_output.masked_fill(rna_mask, 0.0)
 
         return attn_output
 
