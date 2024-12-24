@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_onl
 def main():
     parser = argparse.ArgumentParser(description="Train or resume a model for RNA-Protein interaction.")
     parser.add_argument('--resume', type=str, default=None, help="Path to model checkpoint to resume training")
-    parser.add_argument('--config', type=str, default="./config/config.yaml", help="Path to config file")
+    parser.add_argument('--config', type=str, default="./config/rllm.yaml", help="Path to config file")
     parser.add_argument('--device', type=str, default="cuda", help="Device to use for training (cuda or cpu)")
     args = parser.parse_args()
 
@@ -37,15 +37,13 @@ def main():
 
     device = torch.device(args.device if args.device else 'cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Initialize tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(config["tokenizer_path"])
-    vocab_size = tokenizer.vocab_size
+    
 
     model = RLLM(
-        config["d_protein"], config["d_model"], 
-        config["num_heads"], config["rllm_dropout"],
-        config["gpt_dropout"], config["gpt_weights_path"], 
-        vocab_size
+        d_protein=config["d_protein"], d_model=config["d_model"], 
+        num_heads=config["num_heads"], rllm_dropout=config["rllm_dropout"],
+        rnafm_dropout=config["rnafm_dropout"], 
+        rnafm_checkpoint_path=config["rnafm_checkpoint_path"],
     )
 
     params = sum(p.numel() for p in model.parameters())
@@ -54,7 +52,7 @@ def main():
     print(f"Number of parameters: {params/1e6:.2f}M")
     print(f"Number of trainable parameters: {trainable_params/1e6:.2f}M")
 
-    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, reduction="sum") 
+    criterion = nn.CrossEntropyLoss(ignore_index=model.alphabet.padding_idx, reduction='sum')
 
     if args.resume:
         print(f"Resuming training from checkpoint: {args.resume}")
@@ -73,11 +71,15 @@ def main():
     else:
         start_epoch, iteration = 0, 0
 
+    alphabet = model.alphabet
+    vocab_size = len(alphabet)
+    tokenizer = model.alphabet.get_batch_converter()
+
     # DataLoader for Train and Validation
     train_dataset = ProteinRNADataset(
         config["data_paths"]["pairs_train_path"],
         config["data_paths"]["protein_data_path"],
-        tokenizer=tokenizer,
+        alphabet=alphabet
     )
     train_dataloader = DataLoader(
         train_dataset, 
@@ -92,7 +94,7 @@ def main():
     val_dataset = ProteinRNADataset(
         config["data_paths"]["pairs_val_path"],
         config["data_paths"]["protein_data_path"],
-        tokenizer=tokenizer,
+        alphabet=alphabet
     )
     val_dataloader = DataLoader(
         val_dataset, 
@@ -104,8 +106,9 @@ def main():
         drop_last=True
     )
 
+    # A100
     torch.set_float32_matmul_precision('high')
-    model = torch.compile(model) 
+    model: RLLM = torch.compile(model) 
     model.to(device)
 
     num_epochs = config["num_epochs"]
@@ -114,7 +117,8 @@ def main():
 
     optimizer = optim.AdamW([
         {'params': model.get_trainable_parameters(cross_attn=True), 'lr': config["rllm_learning_rate"], 'name': 'cross_attn'},  # Cross-attention blocks
-        {'params': model.get_trainable_parameters(gpt=True), 'lr': config["gpt_learning_rate"], 'name': 'gpt'},  # Trainable GPT layers
+        {'params': model.get_trainable_parameters(layer_norm=True), 'lr': config["rllm_learning_rate"], 'name': 'layer_norm'},  # Layer norm
+        {'params': model.get_trainable_parameters(rnafm=True), 'lr': config["rnafm_learning_rate"], 'name': 'rnafm'},  # RNAFM layers
     ], weight_decay=config["optimizer_weight_decay"])
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
@@ -150,23 +154,27 @@ def main():
 
         with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch", total=len(train_dataloader)) as pbar:
             for batch_idx, batch in enumerate(pbar):
-                protein, protein_mask, rna_ids, rna_mask = (
+                protein, protein_padding_mask, masked_rna, mask_indices, gt_tokens, rna_padding_mask = (
                     batch["protein"].to(device), # embedding shape like [B, prot_len, d_protein]
-                    batch["protein_mask"].to(device), # mask shape like [B, prot_len]
-                    batch["rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
-                    batch["rna_mask"].to(device) # mask shape like [B, rna_len]
+                    batch["protein_padding_mask"].to(device), # mask shape like [B, prot_len]
+                    batch["masked_rna"].to(device), # tokenized RNA sequence shape like [B, rna_len]
+                    batch["mask_indices"].to(device), # mask shape like [B, rna_len]
+                    batch["ground_truth_tokens"].to(device), # ground truth tokens shape like [B, rna_len]
+                    batch["rna_padding_mask"].to(device) # mask shape like [B, rna_len]
                 )
                 optimizer.zero_grad()
 
-                rna_src = rna_ids[:, :-1] # remove last token for source 
-                rna_mask = rna_mask[:, :-1] # remove last token for source
-                rna_tgt = rna_ids[:, 1:] # remove first token for target
+                # masked is a boolean tensor with the same shape as masked_rna, where True indicates a masked token
+                tokens_mask = torch.zeros_like(masked_rna, dtype=torch.bool) # shape like [B, rna_len]
+                tokens_mask.scatter_(1, mask_indices, True) # shape like [B, rna_len], True at masked indices
 
-                logits = model(protein, rna_src, protein_mask, rna_mask)
+                logits = model(protein, masked_rna, protein_padding_mask, rna_padding_mask, masked_tokens=tokens_mask)
                 logits = logits.reshape(-1, vocab_size)
-                rna_tgt = rna_tgt.reshape(-1)
+                gt_tokens = [t for tokens in gt_tokens for t in tokens]
+                gt_tokens = [alphabet.get_idx(t) for t in gt_tokens]
+                gt_tokens = torch.tensor(gt_tokens, device=device, dtype=torch.long)
 
-                loss = criterion(logits, rna_tgt)
+                loss = criterion(logits, gt_tokens)
                 loss.backward()
                 
                 optimizer.step()
@@ -174,7 +182,7 @@ def main():
 
                 iteration += 1
 
-                valid_tokens = (rna_tgt != tokenizer.pad_token_id).sum().item() # number of valid (non-padding) tokens
+                valid_tokens = gt_tokens.shape.numel()
                 
                 running_train_loss += loss.item()
                 running_train_tokens += valid_tokens
@@ -228,9 +236,8 @@ def main():
                         lr = group['lr']
                         logging.info(f"Learning rate for {name}: {lr}")
 
-                # Update progress bar with current loss 
-                num_valid_batch_tokens = (rna_tgt != tokenizer.pad_token_id).sum().item()
-                pbar.set_postfix(loss=f"{loss.item() / num_valid_batch_tokens:.6f}", refresh=True)
+                # Update progress bar with current loss value
+                pbar.set_postfix(loss=f"{loss.item() / valid_tokens:.6f}", refresh=True)
 
         checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_final.pt")
         checkpoint(model, optimizer, scheduler, (epoch + 1), iteration, checkpoint_path)

@@ -74,8 +74,8 @@ class BioBertModel(nn.Module):   #ProteinBertModel(nn.Module):
                     self.args.embed_dim,
                     self.args.ffn_embed_dim,
                     self.args.attention_heads,
-                    add_bias_kv=(self.model_version != "ESM-1b"),
-                    use_esm1b_layer_norm=(self.model_version == "ESM-1b"),
+                    add_bias_kv=(self.model_version != "ESM-1b"), # False
+                    use_esm1b_layer_norm=(self.model_version == "ESM-1b"), # True
                 )
                 for _ in range(self.args.layers)
             ]
@@ -124,7 +124,7 @@ class BioBertModel(nn.Module):   #ProteinBertModel(nn.Module):
         x = x + self.embed_positions(tokens)
 
         if self.model_version == "ESM-1b":
-            if self.emb_layer_norm_before:
+            if self.emb_layer_norm_before: # None for pretrained RNA-FM
                 x = self.emb_layer_norm_before(x)
             if padding_mask is not None:
                 x = x * (1 - padding_mask.unsqueeze(-1).type_as(x))

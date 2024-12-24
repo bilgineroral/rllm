@@ -64,10 +64,25 @@ def main():
     print(f"Number of trainable parameters: {trainable_params/1e6:.2f}M")
 
     # create weights for cross-entropy loss to address class imbalance
-    num_sequences = [cluster[2] for cluster in RNA_LENGTH_CLUSTERS]
-    total_sequences = sum(num_sequences)
-    weights = [total_sequences / n for n in num_sequences]
-    criterion = FocalLoss(weight=torch.tensor(weights, dtype=torch.float32, device=device))
+    num_classes = len(RNA_LENGTH_CLUSTERS)
+    counts = [0] * num_classes
+
+    for cluster_id, _, count in RNA_LENGTH_CLUSTERS:
+        counts[cluster_id] = count
+
+    # Verify that all clusters are accounted for
+    assert all(c > 0 for c in counts), "Some cluster counts are missing or zero."
+
+    # Compute weights inversely proportional to counts
+    total_counts = sum(counts)
+    weights = [total_counts / (num_classes * c) for c in counts]
+
+    weights = torch.tensor(weights, dtype=torch.float, device=device)
+
+    # normalize the weights so that the minimum weight is 1
+    min_weight = weights.min()
+    weights = weights / min_weight
+    criterion = FocalLoss(weight=weights)
 
     if args.resume:
         print(f"Resuming training from checkpoint: {args.resume}")

@@ -102,7 +102,7 @@ class TransformerLayer(nn.Module):
         self.final_layer_norm = BertLayerNorm(self.embed_dim)
 
     def forward(self, x, self_attn_mask=None, self_attn_padding_mask=None, need_head_weights=False):
-        residual = x
+        residual = x # x: [t, b, c]
         x = self.self_attn_layer_norm(x)
         x, attn = self.self_attn(
             query=x,
@@ -113,13 +113,13 @@ class TransformerLayer(nn.Module):
             need_head_weights=need_head_weights,
             attn_mask=self_attn_mask,
         )
-        x = residual + x
+        x = residual + x # [t, b, c]
 
-        residual = x
+        residual = x # [t, b, c]
         x = self.final_layer_norm(x)
         x = gelu(self.fc1(x))
         x = self.fc2(x)
-        x = residual + x
+        x = residual + x # [t, b, c]
 
         return x, attn
 
@@ -282,6 +282,8 @@ class RobertaLMHead(nn.Module):
         self.bias = nn.Parameter(torch.zeros(output_dim))
 
     def forward(self, features, masked_tokens=None):
+        # features: B x T x C
+
         # only project the masked tokens while training, saves both memory and computation
         if masked_tokens is not None:
             features = features[masked_tokens, :]
@@ -290,7 +292,7 @@ class RobertaLMHead(nn.Module):
         x = gelu(x)
         x = self.layer_norm(x)
         # project back to size of vocabulary with bias
-        x = F.linear(x, self.weight) + self.bias
+        x = F.linear(x, self.weight) + self.bias # B x T x V
         return x
 
 class ContactPredictionHead(nn.Module):

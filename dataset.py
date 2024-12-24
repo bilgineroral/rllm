@@ -3,6 +3,7 @@ import os
 from torch.utils.data import Dataset
 from fm.data import Alphabet, BatchConverter
 
+from util import mask_tokens
 from constants import RNA_LENGTH_CLUSTERS
 
 class ProteinRNADataset(Dataset):
@@ -64,17 +65,31 @@ def collate_fn(batch, tokenizer: BatchConverter):
 
     rna_sequences = [item['rna'] for item in batch]
 
-    rna_sequences = [(str(i), rna) for i, rna in enumerate(rna_sequences)] # format that BatchConverter expects
-    
-    _, _, tokens = tokenizer(rna_sequences)
+    masked_rna_sequences, mask_indices, ground_truth_tokens = [], [], []
+    for rna in rna_sequences:
+        masked_rna, indices, ground_truth = mask_tokens(rna)
+        masked_rna_sequences.append(masked_rna)
+        mask_indices.append(indices)
+        ground_truth_tokens.append(ground_truth)
 
-    rna_padding_mask = tokens == tokenizer.alphabet.padding_idx
+    rna_sequences = [(str(i), rna) for i, rna in enumerate(masked_rna_sequences)] # format that BatchConverter expects
+    
+    _, _, masked_tokens = tokenizer(rna_sequences)  # [batch_size, max_rna_len]
+    max_rna_len = masked_tokens.shape[1]
+
+    # extend each list in mask_indices to max_rna_len with its last element
+    mask_indices = [list(indices) + [indices[-1]] * (max_rna_len - len(indices)) for indices in mask_indices]
+    mask_indices = torch.tensor(mask_indices)  # [batch_size, max_rna_len]
+
+    rna_padding_mask = masked_tokens == tokenizer.alphabet.padding_idx
 
     return {
-        "protein": protein_padded,          # [batch_size, max_protein_len, d_protein]
-        "protein_mask": protein_padding_mask,  # [batch_size, max_protein_len]
-        "rna": tokens,                  # [batch_size, max_rna_len]
-        "rna_mask": rna_padding_mask,          # [batch_size, max_rna_len]
+        "protein": protein_padded,                     # [batch_size, max_protein_len, d_protein]
+        "protein_padding_mask": protein_padding_mask,  # [batch_size, max_protein_len]
+        "masked_rna": masked_tokens,                   # [batch_size, max_rna_len]
+        "mask_indices": mask_indices,                  # [batch_size, max_rna_len]
+        "ground_truth_tokens": ground_truth_tokens,    # list (length: batch_size) of lists
+        "rna_padding_mask": rna_padding_mask,          # [batch_size, max_rna_len]
     }
 
 
