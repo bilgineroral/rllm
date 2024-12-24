@@ -142,6 +142,7 @@ def main():
 
     checkpoint_interval = config["checkpoint_interval"]
     plot_interval = config["plot_interval"]
+    validation_interval = config["validation_interval"]
 
     start = time.time() # training start
     model.train()
@@ -204,7 +205,7 @@ def main():
                     plot(training_losses, os.path.join(plots_dir, f"train_loss_epoch_{epoch}_iter_{iteration}.png"))
                     plot(train_perplexities, os.path.join(plots_dir, f"train_perplexity_epoch_{epoch}_iter_{iteration}.png"))
 
-                if iteration % checkpoint_interval == 0:
+                if iteration % validation_interval == 0:
                     avg_val_loss, avg_val_perplexity = validate(model, val_dataloader, criterion, device=device)
                     validation_losses.append((avg_val_loss, iteration))
                     validation_perplexities.append((avg_val_perplexity, iteration))
@@ -216,19 +217,24 @@ def main():
                     plot(validation_losses, os.path.join(plots_dir, f"val_loss_epoch_{epoch}_iter_{iteration}.png"))
                     plot(validation_perplexities, os.path.join(plots_dir, f"val_perplexity_epoch_{epoch}_iter_{iteration}.png"))
 
-                    checkpoint_filename = f"checkpoint_epoch_{epoch}_iter_{iteration}.pt"
-                    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
-                    checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
-                    
-                    if early_stopping and avg_val_loss >= best_val_loss:
-                        val_loss_not_improved += 1
-                        if val_loss_not_improved >= patience:
-                            break
                     if avg_val_loss < best_val_loss: # improvement in validation loss
                         best_val_loss = avg_val_loss
                         val_loss_not_improved = 0
-                        checkpoint_filename = "best_" + checkpoint_filename
+
+                        checkpoint_filename = f"best_checkpoint_epoch_{epoch}_iter_{iteration}.pt"
+                        checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
                         logging.info(f"Checkpointing best model with validation loss: {avg_val_loss:.6f}, at epoch {epoch + 1}, iteration {iteration}")
+                        checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
+
+                        if early_stopping and avg_val_loss >= best_val_loss:
+                            val_loss_not_improved += 1
+                            if val_loss_not_improved >= patience:
+                                break
+
+                if iteration % checkpoint_interval == 0:
+                    checkpoint_filename = f"checkpoint_epoch_{epoch}_iter_{iteration}.pt"
+                    checkpoint_path = os.path.join(checkpoint_dir, checkpoint_filename)
+                    checkpoint(model, optimizer, scheduler, epoch, iteration, checkpoint_path)
 
                     # Iterate through each parameter group and log its name and learning rate
                     for group in optimizer.param_groups:

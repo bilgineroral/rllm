@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 
 from dataset import ProteinRNALengthDataset, collate_fn_length
-from util import checkpoint, validate, load_config, plot, parse_data_file
+from util import checkpoint, validate_ln, load_config, plot, parse_data_file
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only=False.*")
 
@@ -210,7 +210,7 @@ def main():
                     running_train_loss = 0.0 # reset
 
                 if iteration % validation_interval == 0:
-                    avg_val_loss = validate(model, val_dataloader, criterion, device=device)
+                    avg_val_loss = validate_ln(model, val_dataloader, criterion, device=device)
                     validation_losses.append((avg_val_loss, iteration))
 
                     # Save validation losses and perplexities

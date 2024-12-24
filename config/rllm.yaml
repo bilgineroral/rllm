@@ -1,7 +1,7 @@
 # Model config
 d_protein: 1152
 d_model: 640
-num_heads: 8 # Number of attention heads in cross attention blocks
+num_heads: 10 # Number of attention heads in cross attention blocks
 
 rllm_dropout: 0.2
 rnafm_dropout: 0.1
@@ -10,14 +10,15 @@ tokenizer_path: "./tokenizer"
 rnafm_checkpoint_path: "./checkpoints/rnafm_checkpoint.pth"
 
 # Training Configuration
-batch_size: 32
-num_epochs: 10
+batch_size: 8
+num_epochs: 3
 rllm_learning_rate: 3.0e-4
 rnafm_learning_rate: 5.0e-5
-checkpoint_interval: 4000  # Validate and save model every n iterations
-plot_interval: 200        # Plot every n iterations
-early_stopping: True
-early_stopping_patience: 8 # counted every checkpoint_interval
+checkpoint_interval: 12000  # Validate and save model every n iterations
+validation_interval: 36000    # Validate every n iterations
+plot_interval: 600        # Plot every n iterations
+early_stopping: False
+early_stopping_patience: 8 # counted every validation_interval
 num_workers_train: 8          # Number of workers for data loader
 num_workers_val: 4          # Number of workers for data loader
 
