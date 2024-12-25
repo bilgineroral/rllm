@@ -26,9 +26,14 @@ def sample(
 
     model.eval()
 
-    for i in range(max_new_tokens):
+    for _ in range(max_new_tokens):
         logits = model(protein, idx)
         logits = logits[:, -1, :] / temperature # [B; vocab_size]
+
+        if repetition_penalty != 1.0:
+            for i in range(idx.size(0)):
+                for j in range(idx.size(1)):
+                    logits[i, idx[i, j]] /= repetition_penalty
 
         logits, indices = torch.topk(logits, min(top_k, logits.size(-1))) # [B; top_k]
         probs = F.softmax(logits, dim=-1) # [B; top_k]
@@ -56,6 +61,8 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_k", type=int, default=20)
     parser.add_argument("--repetition_penalty", type=float, default=1.0)
+    parser.add_argument("--output_path", type=str, default="./output.txt")
+    parser.add_argument("--iters", type=int, default=1)
 
     args = parser.parse_args()
 
@@ -65,8 +72,6 @@ if __name__ == "__main__":
     model = RLLM(gpt_checkpoint_path=args.decoder_weights)
     model.to(device)
 
-    # print("Before: ", model.gpt.transformer.h[23].attn.c_attn.weight[:5])
-
     model_state_dict = torch.load(args.weights)["model_state"]
     # pytorch compiled model state dict keys have "_orig_mod." prefix so we have to remove them
     for key in list(model_state_dict.keys()):
@@ -75,25 +80,28 @@ if __name__ == "__main__":
     model.load_state_dict(model_state_dict)
     print("Model loaded successfully!")
 
-    # print("After: ", model.gpt.transformer.h[23].attn.c_attn.weight[:5])
-
     protein = torch.load(args.source_protein_path)
     protein = protein.to(device)
 
     start_ids = tokenizer.encode("".join(args.start))
     tokens = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...]) # add batch dim
     
-    print("Sampling RNA sequence...")
-    generated_rna = sample(
-        model=model,
-        tokenizer=tokenizer,
-        protein=protein,
-        idx=tokens,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        device=device,
-        top_k=args.top_k,
-        repetition_penalty=args.repetition_penalty
-    )
+    print("Sampling RNA sequence(s)...")
+    for _ in range(args.iters):
+        generated_rna = sample(
+            model=model,
+            tokenizer=tokenizer,
+            protein=protein,
+            idx=tokens,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            device=device,
+            top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty
+        )
 
-    print(generated_rna)
+        with open(args.output_path, "a") as f:
+            f.write(generated_rna + "\n")
+        print(f"Generated RNA: {generated_rna}")
+
+    print("Sampling complete!")
