@@ -16,8 +16,9 @@ class AttentionPooling(nn.Module):
         scores = self.attention_weights(x)  # Raw scores
 
         # Apply mask: Assign large negative values to padding positions
-        mask = mask.unsqueeze(-1)  # [B, seq_len, 1]
-        scores = scores.masked_fill(mask, float("-inf"))  # Set scores of padding tokens to -inf
+        if mask is not None:
+            mask = mask.unsqueeze(-1)  # [B, seq_len, 1]
+            scores = scores.masked_fill(mask, float("-inf"))  # Set scores of padding tokens to -inf
 
         # Compute normalized weights: [B, seq_len, 1]
         weights = torch.softmax(scores, dim=1)
@@ -167,8 +168,8 @@ class RLLM(nn.Module):
         if rna_mask is not None:
             x = x.masked_fill((rna_ids == self.rnafm.padding_idx).unsqueeze(-1), 0.0)
 
-        if not rna_mask.any():
-            rna_mask = None
+            if not rna_mask.any():
+                rna_mask = None
 
         # Generate RNA embeddings from RNA-FM
         for layer_idx, layer in enumerate(self.rnafm.layers):
@@ -184,7 +185,7 @@ class RLLM(nn.Module):
             x = self.layer_norm_blocks[layer_idx](x)
         
         logits = self.rnafm.lm_head(x, masked_tokens)
-        return logits
+        return logits # [B, rna_len, vocab_size]
 
 
     def get_trainable_parameters(self, 

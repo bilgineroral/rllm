@@ -2,7 +2,6 @@ from constants import RNA_LENGTH_CLUSTERS
 from model import LengthPredictionHead
 
 import os
-from functools import partial
 from tqdm import tqdm
 import logging
 import time
